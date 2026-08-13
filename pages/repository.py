@@ -3,19 +3,18 @@ import time
 
 
 st.set_page_config(
-    page_title="Analyse Retain - Repository",
+    page_title="Analyze Repository",
     page_icon="🔍",
     layout="wide"
 )
 
 
-st.title("🔍 Analyze Repository")
+st.title("Analyze Repository")
 
 st.write(
-    "Enter a GitHub repository to analyze contributor retention."
+    "Enter a GitHub repository to analyze contributor activity "
+    "and understand contributor retention."
 )
-
-st.divider()
 
 
 # Initialize session state
@@ -32,21 +31,21 @@ if "analysis_started" not in st.session_state:
 # Repository Owner
 owner = st.text_input(
     "Repository Owner",
+    value=st.session_state["owner"],
     placeholder="e.g. flutter"
 )
+
 
 # Repository Name
 repository = st.text_input(
     "Repository Name",
+    value=st.session_state["repository"],
     placeholder="e.g. flutter"
 )
 
 
-st.write("")
-
-
 # Analyze button
-if st.button("🚀 Analyze Repository", use_container_width=True):
+if st.button("🔍 Analyze Repository", use_container_width=True):
 
     if not owner or not repository:
         st.error("Please enter both the repository owner and repository name.")
@@ -57,31 +56,26 @@ if st.button("🚀 Analyze Repository", use_container_width=True):
         st.session_state["repository"] = repository
         st.session_state["analysis_started"] = True
 
-        # Loading state
+        # Loading message
         with st.spinner("Analyzing repository..."):
-
             time.sleep(1)
 
             st.success("✓ Repository verified")
 
-            time.sleep(1)
-
+            time.sleep(0.5)
             st.success("✓ Contributors collected")
 
-            time.sleep(1)
-
+            time.sleep(0.5)
             st.success("✓ Pull requests collected")
 
-            time.sleep(1)
-
+            time.sleep(0.5)
             st.success("✓ Reviews collected")
 
-            time.sleep(1)
-
+            time.sleep(0.5)
             st.success("✓ Analysis complete")
 
 
-# Show repository details after analysis
+# Show analysis information after analysis
 if st.session_state["analysis_started"]:
 
     st.divider()
@@ -94,5 +88,6 @@ if st.session_state["analysis_started"]:
     )
 
     st.info(
-        "Analysis results will be displayed here in the next stage."
+        "Dummy analysis completed successfully. "
+        "The real GitHub backend will be connected in a later stage."
     )
