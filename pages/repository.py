@@ -2,6 +2,10 @@ import streamlit as st
 import time
 
 
+# =========================================
+# PAGE CONFIGURATION
+# =========================================
+
 st.set_page_config(
     page_title="Analyze Repository",
     page_icon="🔍",
@@ -9,18 +13,24 @@ st.set_page_config(
 )
 
 
-# Session State
-if "owner" not in st.session_state:
-    st.session_state["owner"] = ""
+# =========================================
+# SESSION STATE
+# =========================================
 
-if "repository" not in st.session_state:
-    st.session_state["repository"] = ""
+if "repo_owner" not in st.session_state:
+    st.session_state.repo_owner = ""
+
+if "repo_name" not in st.session_state:
+    st.session_state.repo_name = ""
 
 if "analysis_started" not in st.session_state:
-    st.session_state["analysis_started"] = False
+    st.session_state.analysis_started = False
 
 
-# Page Title
+# =========================================
+# PAGE HEADER
+# =========================================
+
 st.title("🔍 Analyze Repository")
 
 st.write(
@@ -31,34 +41,67 @@ st.write(
 st.divider()
 
 
-# Repository Details
+# =========================================
+# REPOSITORY DETAILS
+# =========================================
+
 st.subheader("Repository Details")
+
 
 owner = st.text_input(
     "Repository Owner",
+    value=st.session_state.repo_owner,
     placeholder="e.g. flutter"
 )
 
-repository = st.text_input(
+
+repo = st.text_input(
     "Repository Name",
+    value=st.session_state.repo_name,
     placeholder="e.g. flutter"
 )
 
 
-# Analyze Button
-if st.button("🚀 Analyze Repository", type="primary"):
+# =========================================
+# ANALYZE BUTTON
+# =========================================
 
-    if not owner or not repository:
-        st.error("Please enter both the repository owner and repository name.")
+if st.button(
+    "🚀 Analyze Repository",
+    type="primary"
+):
+
+    # Remove unnecessary spaces
+    owner = owner.strip()
+    repo = repo.strip()
+
+    # -----------------------------------------
+    # VALIDATION
+    # -----------------------------------------
+
+    if not owner or not repo:
+
+        st.error(
+            "Please enter both the repository owner "
+            "and repository name."
+        )
 
     else:
 
-        # Store values in Session State
-        st.session_state["owner"] = owner
-        st.session_state["repository"] = repository
-        st.session_state["analysis_started"] = True
+        # -----------------------------------------
+        # SAVE REPOSITORY
+        # -----------------------------------------
 
-        # Loading / Analysis
+        st.session_state.repo_owner = owner
+        st.session_state.repo_name = repo
+
+        st.session_state.analysis_started = True
+
+
+        # -----------------------------------------
+        # SIMULATED ANALYSIS
+        # -----------------------------------------
+
         with st.spinner("Analyzing repository..."):
 
             time.sleep(1)
@@ -77,16 +120,41 @@ if st.button("🚀 Analyze Repository", type="primary"):
             st.success("✓ Analysis complete")
 
 
+        # -----------------------------------------
+        # ANALYSIS COMPLETE
+        # -----------------------------------------
+
         st.divider()
 
-        st.subheader("Analysis Ready")
+        st.subheader("✅ Analysis Ready")
 
         st.write(
-            f"Repository **{st.session_state['owner']}/"
-            f"{st.session_state['repository']}** "
+            f"Repository **{owner}/{repo}** "
             "has been analyzed successfully."
         )
 
         st.info(
-            "Results will be displayed here in the next stage."
+            "Your contributor retention dashboard is ready."
         )
+
+
+# =========================================
+# DASHBOARD NAVIGATION
+# =========================================
+
+if st.session_state.analysis_started:
+
+    st.divider()
+
+    st.subheader("📊 View Results")
+
+    st.write(
+        "Open the dashboard to view contributor "
+        "retention and activity metrics."
+    )
+
+    st.page_link(
+        "pages/dashboard.py",
+        label="📊 View Contributor Dashboard",
+        
+    )
