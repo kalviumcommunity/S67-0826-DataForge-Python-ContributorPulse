@@ -1,5 +1,5 @@
 import streamlit as st
-import pandas as pd 
+import pandas as pd
 
 from github_api import get_repository, get_contributors
 
@@ -72,9 +72,19 @@ repository = st.text_input(
 # ANALYZE BUTTON
 # -----------------------------------------
 
-if st.button("🚀 Analyze Repository", type="primary"):
+if st.button(
+    "🚀 Analyze Repository",
+    type="primary"
+):
 
-    # Check input
+    # Remove unnecessary spaces
+    owner = owner.strip()
+    repository = repository.strip()
+
+    # -----------------------------------------
+    # VALIDATION
+    # -----------------------------------------
+
     if not owner or not repository:
 
         st.error(
@@ -84,7 +94,10 @@ if st.button("🚀 Analyze Repository", type="primary"):
 
     else:
 
-        # Store repository details
+        # -----------------------------------------
+        # SAVE REPOSITORY DETAILS
+        # -----------------------------------------
+
         st.session_state["owner"] = owner
         st.session_state["repository"] = repository
 
@@ -139,24 +152,28 @@ if st.button("🚀 Analyze Repository", type="primary"):
             st.session_state["contributors_data"] = contributors_data
 
             if contributors_data is not None:
+
                 st.success("✓ Contributors collected")
+
             else:
+
                 st.warning(
                     "⚠️ Repository found, but contributors "
                     "could not be collected."
                 )
 
-            st.divider()
-
             # -----------------------------------------
             # REPOSITORY INFORMATION
             # -----------------------------------------
+
+            st.divider()
 
             st.subheader("Repository Information")
 
             col1, col2, col3 = st.columns(3)
 
             with col1:
+
                 st.metric(
                     "⭐ Stars",
                     repository_data.get(
@@ -166,6 +183,7 @@ if st.button("🚀 Analyze Repository", type="primary"):
                 )
 
             with col2:
+
                 st.metric(
                     "🍴 Forks",
                     repository_data.get(
@@ -175,6 +193,7 @@ if st.button("🚀 Analyze Repository", type="primary"):
                 )
 
             with col3:
+
                 st.metric(
                     "🐛 Open Issues",
                     repository_data.get(
@@ -244,58 +263,97 @@ if st.button("🚀 Analyze Repository", type="primary"):
             # CONTRIBUTOR SUMMARY
             # -----------------------------------------
 
-if contributors_data:
+            if contributors_data:
+
+                st.divider()
+
+                st.subheader("👥 Contributors")
+
+                st.write(
+                    "Contributors who have participated "
+                    "in this repository."
+                )
+
+                # Create contributor table
+                contributor_rows = []
+
+                for contributor in contributors_data:
+
+                    contributor_rows.append(
+                        {
+                            "Username": contributor.get(
+                                "login",
+                                "Unknown"
+                            ),
+                            "Contributions": contributor.get(
+                                "contributions",
+                                0
+                            )
+                        }
+                    )
+
+                contributor_df = pd.DataFrame(
+                    contributor_rows
+                )
+
+                # Sort by contributions
+                contributor_df = contributor_df.sort_values(
+                    by="Contributions",
+                    ascending=False
+                )
+
+                # Display table
+                st.dataframe(
+                    contributor_df,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+                st.metric(
+                    "Total Contributors",
+                    len(contributor_df)
+                )
+
+            else:
+
+                st.warning(
+                    "No contributor data available."
+                )
+
+            # -----------------------------------------
+            # ANALYSIS COMPLETE
+            # -----------------------------------------
+
+            st.divider()
+
+            st.subheader("✅ Analysis Ready")
+
+            st.write(
+                f"Repository **{owner}/{repository}** "
+                "has been analyzed successfully."
+            )
+
+            st.info(
+                "Your contributor retention dashboard is ready."
+            )
+
+
+# =========================================
+# DASHBOARD NAVIGATION
+# =========================================
+
+if st.session_state["analysis_started"]:
 
     st.divider()
 
-    st.subheader("👥 Contributors")
+    st.subheader("📊 View Results")
 
     st.write(
-        "Contributors who have participated in this repository."
+        "Open the dashboard to view contributor "
+        "retention and activity metrics."
     )
 
-    # Create contributor table
-    contributor_rows = []
-
-    for contributor in contributors_data:
-
-        contributor_rows.append(
-            {
-                "Username": contributor.get(
-                    "login",
-                    "Unknown"
-                ),
-                "Contributions": contributor.get(
-                    "contributions",
-                    0
-                )
-            }
-        )
-
-    contributor_df = pd.DataFrame(
-        contributor_rows
-    )
-
-    # Sort by contributions
-    contributor_df = contributor_df.sort_values(
-        by="Contributions",
-        ascending=False
-    )
-
-    # Display table
-    st.dataframe(
-        contributor_df,
-        use_container_width=True,
-        hide_index=True
-    )
-
-    st.metric(
-        "Total Contributors",
-        len(contributor_df)
-    )
-
-else:
-
-    st.warning(
-        "No contributor data available."
+    st.page_link(
+        "pages/dashboard.py",
+        label="📊 View Contributor Dashboard"
     )
