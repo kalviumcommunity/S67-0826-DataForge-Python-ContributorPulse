@@ -1,7 +1,11 @@
 import streamlit as st
 import pandas as pd
 
-from github_api import get_repository, get_contributors
+from github_api import (
+    get_repository,
+    get_contributors,
+    get_commit_activity
+)
 
 
 # -----------------------------------------
@@ -33,6 +37,9 @@ if "repository_data" not in st.session_state:
 
 if "contributors_data" not in st.session_state:
     st.session_state["contributors_data"] = None
+
+if "commit_activity" not in st.session_state:
+    st.session_state["commit_activity"] = None
 
 
 # -----------------------------------------
@@ -121,6 +128,7 @@ if st.button(
             st.session_state["analysis_started"] = False
             st.session_state["repository_data"] = None
             st.session_state["contributors_data"] = None
+            st.session_state["commit_activity"] = None
 
             st.error(
                 "❌ Repository not found. "
@@ -160,6 +168,29 @@ if st.button(
                 st.warning(
                     "⚠️ Repository found, but contributors "
                     "could not be collected."
+                )
+
+            # -----------------------------------------
+            # GET COMMIT ACTIVITY
+            # -----------------------------------------
+
+            with st.spinner("Collecting commit activity..."):
+
+                commit_activity = get_commit_activity(
+                    owner,
+                    repository
+                )
+
+            st.session_state["commit_activity"] = commit_activity
+
+            if commit_activity is not None:
+
+                st.success("✓ Commit activity collected")
+
+            else:
+
+                st.warning(
+                    "⚠️ Commit activity could not be collected."
                 )
 
             # -----------------------------------------
@@ -305,7 +336,7 @@ if st.button(
                 # Display table
                 st.dataframe(
                     contributor_df,
-                    use_container_width=True,
+                    width="stretch",
                     hide_index=True
                 )
 
@@ -318,6 +349,32 @@ if st.button(
 
                 st.warning(
                     "No contributor data available."
+                )
+
+            # -----------------------------------------
+            # COMMIT ACTIVITY
+            # -----------------------------------------
+
+            if commit_activity:
+
+                st.divider()
+
+                st.subheader("📈 Commit Activity")
+
+                st.write(
+                    "Recent commit activity collected "
+                    "from the repository."
+                )
+
+                # Show the first few records
+                st.write(
+                    commit_activity[:5]
+                )
+
+            else:
+
+                st.warning(
+                    "No commit activity data available."
                 )
 
             # -----------------------------------------
