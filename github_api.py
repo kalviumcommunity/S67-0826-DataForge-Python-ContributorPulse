@@ -95,3 +95,31 @@ def get_contributors(owner, repository):
     )
 
     return None
+
+def get_commit_activity(owner, repository):
+    """
+    Get weekly commit activity for a repository.
+    """
+
+    url = f"https://api.github.com/repos/{owner}/{repository}/stats/commit_activity"
+
+    headers = {}
+
+    if GITHUB_TOKEN:
+        headers["Authorization"] = f"Bearer {GITHUB_TOKEN}"
+
+    response = requests.get(
+        url,
+        headers=headers
+    )
+
+    if response.status_code == 200:
+        return response.json()
+
+    print(
+        "GitHub API Error:",
+        response.status_code,
+        response.text
+    )
+
+    return None
