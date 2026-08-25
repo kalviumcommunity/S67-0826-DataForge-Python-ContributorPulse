@@ -1,10 +1,12 @@
 import streamlit as st
-import time
+import pandas as pd
+
+from github_api import get_repository, get_contributors
 
 
-# =========================================
+# -----------------------------------------
 # PAGE CONFIGURATION
-# =========================================
+# -----------------------------------------
 
 st.set_page_config(
     page_title="Analyze Repository",
@@ -13,23 +15,29 @@ st.set_page_config(
 )
 
 
-# =========================================
+# -----------------------------------------
 # SESSION STATE
-# =========================================
+# -----------------------------------------
 
-if "repo_owner" not in st.session_state:
-    st.session_state.repo_owner = ""
+if "owner" not in st.session_state:
+    st.session_state["owner"] = ""
 
-if "repo_name" not in st.session_state:
-    st.session_state.repo_name = ""
+if "repository" not in st.session_state:
+    st.session_state["repository"] = ""
 
 if "analysis_started" not in st.session_state:
-    st.session_state.analysis_started = False
+    st.session_state["analysis_started"] = False
+
+if "repository_data" not in st.session_state:
+    st.session_state["repository_data"] = None
+
+if "contributors_data" not in st.session_state:
+    st.session_state["contributors_data"] = None
 
 
-# =========================================
-# PAGE HEADER
-# =========================================
+# -----------------------------------------
+# PAGE TITLE
+# -----------------------------------------
 
 st.title("🔍 Analyze Repository")
 
@@ -41,30 +49,28 @@ st.write(
 st.divider()
 
 
-# =========================================
+# -----------------------------------------
 # REPOSITORY DETAILS
-# =========================================
+# -----------------------------------------
 
 st.subheader("Repository Details")
 
-
 owner = st.text_input(
     "Repository Owner",
-    value=st.session_state.repo_owner,
+    value=st.session_state["owner"],
     placeholder="e.g. flutter"
 )
 
-
-repo = st.text_input(
+repository = st.text_input(
     "Repository Name",
-    value=st.session_state.repo_name,
+    value=st.session_state["repository"],
     placeholder="e.g. flutter"
 )
 
 
-# =========================================
+# -----------------------------------------
 # ANALYZE BUTTON
-# =========================================
+# -----------------------------------------
 
 if st.button(
     "🚀 Analyze Repository",
@@ -73,13 +79,13 @@ if st.button(
 
     # Remove unnecessary spaces
     owner = owner.strip()
-    repo = repo.strip()
+    repository = repository.strip()
 
     # -----------------------------------------
     # VALIDATION
     # -----------------------------------------
 
-    if not owner or not repo:
+    if not owner or not repository:
 
         st.error(
             "Please enter both the repository owner "
@@ -89,60 +95,254 @@ if st.button(
     else:
 
         # -----------------------------------------
-        # SAVE REPOSITORY
+        # SAVE REPOSITORY DETAILS
         # -----------------------------------------
 
-        st.session_state.repo_owner = owner
-        st.session_state.repo_name = repo
-
-        st.session_state.analysis_started = True
-
+        st.session_state["owner"] = owner
+        st.session_state["repository"] = repository
 
         # -----------------------------------------
-        # SIMULATED ANALYSIS
+        # GET REPOSITORY INFORMATION
         # -----------------------------------------
 
-        with st.spinner("Analyzing repository..."):
+        with st.spinner("Checking GitHub repository..."):
 
-            time.sleep(1)
+            repository_data = get_repository(
+                owner,
+                repository
+            )
+
+        # -----------------------------------------
+        # REPOSITORY NOT FOUND
+        # -----------------------------------------
+
+        if repository_data is None:
+
+            st.session_state["analysis_started"] = False
+            st.session_state["repository_data"] = None
+            st.session_state["contributors_data"] = None
+
+            st.error(
+                "❌ Repository not found. "
+                "Please check the owner and repository name."
+            )
+
+        # -----------------------------------------
+        # REPOSITORY FOUND
+        # -----------------------------------------
+
+        else:
+
+            st.session_state["analysis_started"] = True
+            st.session_state["repository_data"] = repository_data
+
             st.success("✓ Repository verified")
 
-            time.sleep(1)
-            st.success("✓ Contributors collected")
+            # -----------------------------------------
+            # GET CONTRIBUTORS
+            # -----------------------------------------
 
-            time.sleep(1)
-            st.success("✓ Pull requests collected")
+            with st.spinner("Collecting contributors..."):
 
-            time.sleep(1)
-            st.success("✓ Reviews collected")
+                contributors_data = get_contributors(
+                    owner,
+                    repository
+                )
 
-            time.sleep(1)
-            st.success("✓ Analysis complete")
+            st.session_state["contributors_data"] = contributors_data
 
+            if contributors_data is not None:
 
-        # -----------------------------------------
-        # ANALYSIS COMPLETE
-        # -----------------------------------------
+                st.success("✓ Contributors collected")
 
-        st.divider()
+            else:
 
-        st.subheader("✅ Analysis Ready")
+                st.warning(
+                    "⚠️ Repository found, but contributors "
+                    "could not be collected."
+                )
 
-        st.write(
-            f"Repository **{owner}/{repo}** "
-            "has been analyzed successfully."
-        )
+            # -----------------------------------------
+            # REPOSITORY INFORMATION
+            # -----------------------------------------
 
-        st.info(
-            "Your contributor retention dashboard is ready."
-        )
+            st.divider()
+
+            st.subheader("Repository Information")
+
+            col1, col2, col3 = st.columns(3)
+
+            with col1:
+
+                st.metric(
+                    "⭐ Stars",
+                    repository_data.get(
+                        "stargazers_count",
+                        0
+                    )
+                )
+
+            with col2:
+
+                st.metric(
+                    "🍴 Forks",
+                    repository_data.get(
+                        "forks_count",
+                        0
+                    )
+                )
+
+            with col3:
+
+                st.metric(
+                    "🐛 Open Issues",
+                    repository_data.get(
+                        "open_issues_count",
+                        0
+                    )
+                )
+
+            # -----------------------------------------
+            # DESCRIPTION
+            # -----------------------------------------
+
+            st.subheader("Description")
+
+            description = repository_data.get(
+                "description"
+            )
+
+            if description:
+
+                st.write(description)
+
+            else:
+
+                st.write(
+                    "No description available."
+                )
+
+            # -----------------------------------------
+            # REPOSITORY DETAILS
+            # -----------------------------------------
+
+            st.subheader("Repository Details")
+
+            col1, col2 = st.columns(2)
+
+            with col1:
+
+                st.write(
+                    "**Repository:** "
+                    f"{repository_data.get('full_name', 'N/A')}"
+                )
+
+                st.write(
+                    "**Language:** "
+                    f"{repository_data.get('language', 'N/A')}"
+                )
+
+            with col2:
+
+                st.write(
+                    "**Default Branch:** "
+                    f"{repository_data.get('default_branch', 'N/A')}"
+                )
+
+                visibility = (
+                    "Private"
+                    if repository_data.get("private")
+                    else "Public"
+                )
+
+                st.write(
+                    f"**Visibility:** {visibility}"
+                )
+
+            # -----------------------------------------
+            # CONTRIBUTOR SUMMARY
+            # -----------------------------------------
+
+            if contributors_data:
+
+                st.divider()
+
+                st.subheader("👥 Contributors")
+
+                st.write(
+                    "Contributors who have participated "
+                    "in this repository."
+                )
+
+                # Create contributor table
+                contributor_rows = []
+
+                for contributor in contributors_data:
+
+                    contributor_rows.append(
+                        {
+                            "Username": contributor.get(
+                                "login",
+                                "Unknown"
+                            ),
+                            "Contributions": contributor.get(
+                                "contributions",
+                                0
+                            )
+                        }
+                    )
+
+                contributor_df = pd.DataFrame(
+                    contributor_rows
+                )
+
+                # Sort by contributions
+                contributor_df = contributor_df.sort_values(
+                    by="Contributions",
+                    ascending=False
+                )
+
+                # Display table
+                st.dataframe(
+                    contributor_df,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+                st.metric(
+                    "Total Contributors",
+                    len(contributor_df)
+                )
+
+            else:
+
+                st.warning(
+                    "No contributor data available."
+                )
+
+            # -----------------------------------------
+            # ANALYSIS COMPLETE
+            # -----------------------------------------
+
+            st.divider()
+
+            st.subheader("✅ Analysis Ready")
+
+            st.write(
+                f"Repository **{owner}/{repository}** "
+                "has been analyzed successfully."
+            )
+
+            st.info(
+                "Your contributor retention dashboard is ready."
+            )
 
 
 # =========================================
 # DASHBOARD NAVIGATION
 # =========================================
 
-if st.session_state.analysis_started:
+if st.session_state["analysis_started"]:
 
     st.divider()
 
@@ -155,6 +355,5 @@ if st.session_state.analysis_started:
 
     st.page_link(
         "pages/dashboard.py",
-        label="📊 View Contributor Dashboard",
-        
+        label="📊 View Contributor Dashboard"
     )
