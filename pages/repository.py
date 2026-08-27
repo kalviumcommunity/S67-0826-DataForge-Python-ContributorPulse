@@ -1,16 +1,17 @@
 import streamlit as st
-import pandas as pd
 
 from github_api import (
     get_repository,
     get_contributors,
-    get_commit_activity
+    get_commit_activity,
+    get_pull_requests,
+    get_commits
 )
 
 
-# -----------------------------------------
+# =========================================
 # PAGE CONFIGURATION
-# -----------------------------------------
+# =========================================
 
 st.set_page_config(
     page_title="Analyze Repository",
@@ -19,9 +20,9 @@ st.set_page_config(
 )
 
 
-# -----------------------------------------
+# =========================================
 # SESSION STATE
-# -----------------------------------------
+# =========================================
 
 if "owner" not in st.session_state:
     st.session_state["owner"] = ""
@@ -41,10 +42,16 @@ if "contributors_data" not in st.session_state:
 if "commit_activity" not in st.session_state:
     st.session_state["commit_activity"] = None
 
+if "pull_requests" not in st.session_state:
+    st.session_state["pull_requests"] = None
 
-# -----------------------------------------
+if "commits" not in st.session_state:
+    st.session_state["commits"] = None
+
+
+# =========================================
 # PAGE TITLE
-# -----------------------------------------
+# =========================================
 
 st.title("🔍 Analyze Repository")
 
@@ -56,9 +63,9 @@ st.write(
 st.divider()
 
 
-# -----------------------------------------
+# =========================================
 # REPOSITORY DETAILS
-# -----------------------------------------
+# =========================================
 
 st.subheader("Repository Details")
 
@@ -75,16 +82,15 @@ repository = st.text_input(
 )
 
 
-# -----------------------------------------
+# =========================================
 # ANALYZE BUTTON
-# -----------------------------------------
+# =========================================
 
 if st.button(
     "🚀 Analyze Repository",
     type="primary"
 ):
 
-    # Remove unnecessary spaces
     owner = owner.strip()
     repository = repository.strip()
 
@@ -109,7 +115,7 @@ if st.button(
         st.session_state["repository"] = repository
 
         # -----------------------------------------
-        # GET REPOSITORY INFORMATION
+        # GET REPOSITORY
         # -----------------------------------------
 
         with st.spinner("Checking GitHub repository..."):
@@ -129,6 +135,8 @@ if st.button(
             st.session_state["repository_data"] = None
             st.session_state["contributors_data"] = None
             st.session_state["commit_activity"] = None
+            st.session_state["pull_requests"] = None
+            st.session_state["commits"] = None
 
             st.error(
                 "❌ Repository not found. "
@@ -146,9 +154,10 @@ if st.button(
 
             st.success("✓ Repository verified")
 
-            # -----------------------------------------
+
+            # =========================================
             # GET CONTRIBUTORS
-            # -----------------------------------------
+            # =========================================
 
             with st.spinner("Collecting contributors..."):
 
@@ -166,13 +175,13 @@ if st.button(
             else:
 
                 st.warning(
-                    "⚠️ Repository found, but contributors "
-                    "could not be collected."
+                    "⚠️ Contributors could not be collected."
                 )
 
-            # -----------------------------------------
+
+            # =========================================
             # GET COMMIT ACTIVITY
-            # -----------------------------------------
+            # =========================================
 
             with st.spinner("Collecting commit activity..."):
 
@@ -193,9 +202,58 @@ if st.button(
                     "⚠️ Commit activity could not be collected."
                 )
 
-            # -----------------------------------------
+
+            # =========================================
+            # GET PULL REQUESTS
+            # =========================================
+
+            with st.spinner("Collecting pull requests..."):
+
+                pull_requests = get_pull_requests(
+                    owner,
+                    repository
+                )
+
+            st.session_state["pull_requests"] = pull_requests
+
+            if pull_requests is not None:
+
+                st.success("✓ Pull requests collected")
+
+            else:
+
+                st.warning(
+                    "⚠️ Pull request data could not be collected."
+                )
+
+
+            # =========================================
+            # GET COMMITS
+            # =========================================
+
+            with st.spinner("Collecting commits..."):
+
+                commits = get_commits(
+                    owner,
+                    repository
+                )
+
+            st.session_state["commits"] = commits
+
+            if commits is not None:
+
+                st.success("✓ Commits collected")
+
+            else:
+
+                st.warning(
+                    "⚠️ Commit data could not be collected."
+                )
+
+
+            # =========================================
             # REPOSITORY INFORMATION
-            # -----------------------------------------
+            # =========================================
 
             st.divider()
 
@@ -233,9 +291,10 @@ if st.button(
                     )
                 )
 
-            # -----------------------------------------
+
+            # =========================================
             # DESCRIPTION
-            # -----------------------------------------
+            # =========================================
 
             st.subheader("Description")
 
@@ -253,9 +312,10 @@ if st.button(
                     "No description available."
                 )
 
-            # -----------------------------------------
+
+            # =========================================
             # REPOSITORY DETAILS
-            # -----------------------------------------
+            # =========================================
 
             st.subheader("Repository Details")
 
@@ -290,59 +350,30 @@ if st.button(
                     f"**Visibility:** {visibility}"
                 )
 
-            # -----------------------------------------
+
+            # =========================================
             # CONTRIBUTOR SUMMARY
-            # -----------------------------------------
+            # =========================================
+
+            st.divider()
+
+            st.subheader("👥 Contributors")
 
             if contributors_data:
 
-                st.divider()
-
-                st.subheader("👥 Contributors")
-
                 st.write(
-                    "Contributors who have participated "
-                    "in this repository."
-                )
-
-                # Create contributor table
-                contributor_rows = []
-
-                for contributor in contributors_data:
-
-                    contributor_rows.append(
-                        {
-                            "Username": contributor.get(
-                                "login",
-                                "Unknown"
-                            ),
-                            "Contributions": contributor.get(
-                                "contributions",
-                                0
-                            )
-                        }
-                    )
-
-                contributor_df = pd.DataFrame(
-                    contributor_rows
-                )
-
-                # Sort by contributions
-                contributor_df = contributor_df.sort_values(
-                    by="Contributions",
-                    ascending=False
-                )
-
-                # Display table
-                st.dataframe(
-                    contributor_df,
-                    width="stretch",
-                    hide_index=True
+                    "Contributor data collected successfully."
                 )
 
                 st.metric(
                     "Total Contributors",
-                    len(contributor_df)
+                    len(contributors_data)
+                )
+
+                st.info(
+                    "Open the Contributors page to view "
+                    "detailed contributor activity and "
+                    "retention analysis."
                 )
 
             else:
@@ -351,9 +382,10 @@ if st.button(
                     "No contributor data available."
                 )
 
-            # -----------------------------------------
+
+            # =========================================
             # COMMIT ACTIVITY
-            # -----------------------------------------
+            # =========================================
 
             if commit_activity:
 
@@ -362,11 +394,10 @@ if st.button(
                 st.subheader("📈 Commit Activity")
 
                 st.write(
-                    "Recent commit activity collected "
+                    "Weekly commit activity collected "
                     "from the repository."
                 )
 
-                # Show the first few records
                 st.write(
                     commit_activity[:5]
                 )
@@ -377,9 +408,106 @@ if st.button(
                     "No commit activity data available."
                 )
 
-            # -----------------------------------------
+
+            # =========================================
+            # PULL REQUEST ACTIVITY
+            # =========================================
+
+            if pull_requests:
+
+                st.divider()
+
+                st.subheader("🔀 Pull Request Activity")
+
+                total_prs = len(pull_requests)
+
+                open_prs = sum(
+                    1
+                    for pr in pull_requests
+                    if pr.get("state") == "open"
+                )
+
+                closed_prs = sum(
+                    1
+                    for pr in pull_requests
+                    if pr.get("state") == "closed"
+                )
+
+                col1, col2, col3 = st.columns(3)
+
+                with col1:
+
+                    st.metric(
+                        "Total Pull Requests",
+                        total_prs
+                    )
+
+                with col2:
+
+                    st.metric(
+                        "Open PRs",
+                        open_prs
+                    )
+
+                with col3:
+
+                    st.metric(
+                        "Closed PRs",
+                        closed_prs
+                    )
+
+                # -----------------------------------------
+                # PR TABLE
+                # -----------------------------------------
+
+                pr_rows = []
+
+                for pr in pull_requests:
+
+                    user_data = pr.get("user") or {}
+
+                    pr_rows.append(
+                        {
+                            "Title": pr.get(
+                                "title",
+                                "Unknown"
+                            ),
+                            "Author": user_data.get(
+                                "login",
+                                "Unknown"
+                            ),
+                            "State": pr.get(
+                                "state",
+                                "Unknown"
+                            ),
+                            "Created": pr.get(
+                                "created_at",
+                                "Unknown"
+                            ),
+                            "Merged": (
+                                "Yes"
+                                if pr.get("merged_at")
+                                else "No"
+                            )
+                        }
+                    )
+
+                st.dataframe(
+                    pr_rows,
+                    width="stretch",
+                    hide_index=True
+                )
+
+            else:
+
+                st.warning(
+                    "No pull request data available."
+                )
+
+
+            # =========================================
             # ANALYSIS COMPLETE
-            # -----------------------------------------
+            # =========================================
 
             st.divider()
 
@@ -396,21 +524,31 @@ if st.button(
 
 
 # =========================================
-# DASHBOARD NAVIGATION
+# NAVIGATION
 # =========================================
 
 if st.session_state["analysis_started"]:
 
     st.divider()
 
-    st.subheader("📊 View Results")
+    st.subheader("📊 Continue Analysis")
 
     st.write(
-        "Open the dashboard to view contributor "
-        "retention and activity metrics."
+        "Choose what you want to analyze next."
     )
 
-    st.page_link(
-        "pages/dashboard.py",
-        label="📊 View Contributor Dashboard"
-    )
+    col1, col2 = st.columns(2)
+
+    with col1:
+
+        st.page_link(
+            "pages/contributors.py",
+            label="👥 Analyze Contributors"
+        )
+
+    with col2:
+
+        st.page_link(
+            "pages/dashboard.py",
+            label="📊 View Contributor Dashboard"
+        )
