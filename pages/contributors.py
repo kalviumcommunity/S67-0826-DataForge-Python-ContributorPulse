@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 
+from github_api import get_contributor_commits
+
 
 # =========================================
 # PAGE CONFIGURATION
@@ -51,6 +53,10 @@ contributors_data = st.session_state.get(
 
 pull_requests = st.session_state.get(
     "pull_requests"
+)
+
+commits_data = st.session_state.get(
+    "commits_data"
 )
 
 
@@ -113,8 +119,6 @@ contributor_df = pd.DataFrame(
 )
 
 
-# Sort contributors by contributions
-
 contributor_df = contributor_df.sort_values(
     by="Contributions",
     ascending=False
@@ -122,8 +126,66 @@ contributor_df = contributor_df.sort_values(
 
 
 # =========================================
+# CONTRIBUTOR FILTERS
+# =========================================
+
+st.subheader("🔎 Filter Contributors")
+
+col1, col2 = st.columns(2)
+
+with col1:
+
+    search_username = st.text_input(
+        "Search by username",
+        placeholder="Enter contributor username..."
+    )
+
+with col2:
+
+    min_contributions = st.number_input(
+        "Minimum contributions",
+        min_value=0,
+        value=0,
+        step=1
+    )
+
+
+filtered_df = contributor_df.copy()
+
+
+if search_username:
+
+    filtered_df = filtered_df[
+        filtered_df["Username"].str.contains(
+            search_username,
+            case=False,
+            na=False
+        )
+    ]
+
+
+filtered_df = filtered_df[
+    filtered_df["Contributions"]
+    >= min_contributions
+]
+
+
+st.write(
+    f"Showing **{len(filtered_df)}** contributors."
+)
+
+st.dataframe(
+    filtered_df,
+    width="stretch",
+    hide_index=True
+)
+
+
+# =========================================
 # CONTRIBUTOR OVERVIEW
 # =========================================
+
+st.divider()
 
 st.subheader("📊 Contributor Overview")
 
@@ -141,7 +203,7 @@ average_contributions = round(
     2
 )
 
-top_contributor = contributor_df.iloc[0]
+top_contributor = contributor_df.iloc[0]["Username"]
 
 
 col1, col2, col3, col4 = st.columns(4)
@@ -175,7 +237,7 @@ with col4:
 
     st.metric(
         "Top Contributor",
-        top_contributor["Username"]
+        top_contributor
     )
 
 
@@ -193,8 +255,6 @@ st.write(
 )
 
 
-# Show top 10 contributors
-
 top_contributors = contributor_df.head(10)
 
 
@@ -211,9 +271,11 @@ st.dataframe(
 
 st.subheader("📈 Contribution Distribution")
 
+
 chart_data = top_contributors.set_index(
     "Username"
 )["Contributions"]
+
 
 st.bar_chart(
     chart_data
@@ -221,31 +283,18 @@ st.bar_chart(
 
 
 # =========================================
-# RETURNING CONTRIBUTOR ANALYSIS
+# PULL REQUEST ANALYSIS
 # =========================================
 
 st.divider()
 
-st.subheader("🔄 Contributor Return Analysis")
-
-st.write(
-    "This section looks at pull-request participation "
-    "to identify contributors who appear to have "
-    "returned to contribute more than once."
-)
+st.subheader("🔀 Pull Request Participation")
 
 
-# =========================================
-# CHECK PULL REQUEST DATA
-# =========================================
+pr_counts = {}
+
 
 if pull_requests:
-
-    # -----------------------------------------
-    # COUNT PRs PER CONTRIBUTOR
-    # -----------------------------------------
-
-    pr_counts = {}
 
     for pr in pull_requests:
 
@@ -262,169 +311,352 @@ if pull_requests:
             )
 
 
-    # -----------------------------------------
-    # CREATE RETURN ANALYSIS
-    # -----------------------------------------
+# =========================================
+# COMMIT ANALYSIS
+# =========================================
 
-    return_rows = []
+commit_counts = {}
 
-    for username, count in pr_counts.items():
 
-        if count == 1:
+if commits_data:
 
-            status = "One-time contributor"
+    for commit in commits_data:
 
-        else:
+        author_data = commit.get(
+            "author"
+        ) or {}
 
-            status = "Returning contributor"
-
-        return_rows.append(
-            {
-                "Username": username,
-                "Pull Requests": count,
-                "Participation": status
-            }
+        username = author_data.get(
+            "login"
         )
 
+        if username:
 
-    return_df = pd.DataFrame(
-        return_rows
+            commit_counts[username] = (
+                commit_counts.get(username, 0) + 1
+            )
+
+
+# =========================================
+# CONTRIBUTOR ACTIVITY TABLE
+# =========================================
+
+activity_rows = []
+
+
+all_usernames = set(
+    pr_counts.keys()
+).union(
+    commit_counts.keys()
+)
+
+
+for username in all_usernames:
+
+    pr_count = pr_counts.get(
+        username,
+        0
+    )
+
+    commit_count = commit_counts.get(
+        username,
+        0
+    )
+
+    total_activity = (
+        pr_count +
+        commit_count
+    )
+
+    if total_activity == 1:
+
+        participation = "One-time contributor"
+
+    else:
+
+        participation = "Returning contributor"
+
+
+    activity_rows.append(
+        {
+            "Username": username,
+            "Pull Requests": pr_count,
+            "Commits": commit_count,
+            "Total Activity": total_activity,
+            "Participation": participation
+        }
     )
 
 
-    if not return_df.empty:
-
-        return_df = return_df.sort_values(
-            by="Pull Requests",
-            ascending=False
-        ).reset_index(drop=True)
+activity_df = pd.DataFrame(
+    activity_rows
+)
 
 
-        # -----------------------------------------
-        # RETURN METRICS
-        # -----------------------------------------
+# =========================================
+# RETENTION ANALYSIS
+# =========================================
 
-        returning_count = len(
-            return_df[
-                return_df["Participation"]
-                == "Returning contributor"
-            ]
+if not activity_df.empty:
+
+    activity_df = activity_df.sort_values(
+        by="Total Activity",
+        ascending=False
+    ).reset_index(drop=True)
+
+
+    returning_count = len(
+        activity_df[
+            activity_df["Participation"]
+            == "Returning contributor"
+        ]
+    )
+
+    one_time_count = len(
+        activity_df[
+            activity_df["Participation"]
+            == "One-time contributor"
+        ]
+    )
+
+    total_active_contributors = len(
+        activity_df
+    )
+
+
+    col1, col2, col3 = st.columns(3)
+
+
+    with col1:
+
+        st.metric(
+            "🔄 Returning Contributors",
+            returning_count
         )
 
-        one_time_count = len(
-            return_df[
-                return_df["Participation"]
-                == "One-time contributor"
-            ]
-        )
 
+    with col2:
 
-        col1, col2 = st.columns(2)
-
-
-        with col1:
-
-            st.metric(
-                "🔄 Returning Contributors",
-                returning_count
-            )
-
-
-        with col2:
-
-            st.metric(
-                "🆕 One-time Contributors",
-                one_time_count
-            )
-
-
-        # -----------------------------------------
-        # RETURN RATE
-        # -----------------------------------------
-
-        total_pr_contributors = (
-            returning_count +
+        st.metric(
+            "🆕 One-time Contributors",
             one_time_count
         )
 
 
-        if total_pr_contributors > 0:
+    with col3:
 
-            return_rate = (
-                returning_count /
-                total_pr_contributors
-            ) * 100
-
-            return_rate = round(
-                return_rate,
-                2
-            )
-
-            st.write(
-                f"### Return Rate: {return_rate}%"
-            )
-
-            st.progress(
-                return_rate / 100
-            )
-
-
-        # -----------------------------------------
-        # INTERPRETATION
-        # -----------------------------------------
-
-        if returning_count > one_time_count:
-
-            st.success(
-                "Most PR contributors appear to have "
-                "participated more than once."
-            )
-
-        elif one_time_count > returning_count:
-
-            st.warning(
-                "More contributors appear to have made "
-                "only one PR. This may indicate an "
-                "onboarding or retention opportunity."
-            )
-
-        else:
-
-            st.info(
-                "One-time and returning contributors "
-                "are currently balanced."
-            )
-
-
-        # -----------------------------------------
-        # CONTRIBUTOR RETURN TABLE
-        # -----------------------------------------
-
-        st.subheader(
-            "Contributor Participation"
+        st.metric(
+            "👥 Active Contributors",
+            total_active_contributors
         )
 
-        st.dataframe(
-            return_df,
-            width="stretch",
-            hide_index=True
-        )
 
+    if total_active_contributors > 0:
+
+        return_rate = (
+            returning_count /
+            total_active_contributors
+        ) * 100
+
+        return_rate = round(
+            return_rate,
+            2
+        )
 
     else:
 
-        st.info(
-            "No contributor pull-request activity "
-            "was available for return analysis."
+        return_rate = 0
+
+
+    st.write(
+        f"### 🔄 Contributor Return Rate: "
+        f"{return_rate}%"
+    )
+
+    st.progress(
+        return_rate / 100
+    )
+
+
+    if return_rate >= 70:
+
+        st.success(
+            "A large proportion of active contributors "
+            "show repeated participation. This is a "
+            "positive signal for contributor retention."
         )
+
+    elif return_rate >= 40:
+
+        st.info(
+            "Contributor retention appears moderate. "
+            "Some contributors return while others "
+            "participate only once."
+        )
+
+    else:
+
+        st.warning(
+            "A large proportion of contributors appear "
+            "to participate only once. This may indicate "
+            "an onboarding or contributor-retention "
+            "opportunity."
+        )
+
+
+    st.subheader(
+        "📋 Contributor Activity"
+    )
+
+    st.dataframe(
+        activity_df,
+        width="stretch",
+        hide_index=True
+    )
 
 
 else:
 
     st.warning(
-        "⚠️ Pull request data is not available, "
-        "so contributor return analysis cannot "
-        "be calculated."
+        "⚠️ No pull-request or commit activity "
+        "was available for contributor analysis."
+    )
+
+
+# =========================================
+# CONTRIBUTOR TIMELINE
+# =========================================
+
+st.divider()
+
+st.subheader(
+    "🕒 Contributor Timeline"
+)
+
+st.write(
+    "This section shows when contributors first "
+    "and most recently participated in the repository."
+)
+
+
+timeline_rows = []
+
+
+# -----------------------------------------
+# USE AVAILABLE COMMIT DATA
+# -----------------------------------------
+
+if commits_data:
+
+    contributor_dates = {}
+
+
+    for commit in commits_data:
+
+        commit_data = commit.get(
+            "commit"
+        ) or {}
+
+        author_data = commit_data.get(
+            "author"
+        ) or {}
+
+        date = author_data.get(
+            "date"
+        )
+
+
+        github_author = commit.get(
+            "author"
+        ) or {}
+
+        username = github_author.get(
+            "login"
+        )
+
+
+        if username and date:
+
+            if username not in contributor_dates:
+
+                contributor_dates[username] = []
+
+
+            contributor_dates[username].append(
+                date
+            )
+
+
+    # -----------------------------------------
+    # CREATE TIMELINE
+    # -----------------------------------------
+
+    for username, dates in contributor_dates.items():
+
+        dates = sorted(dates)
+
+        first_contribution = dates[0]
+
+        last_contribution = dates[-1]
+
+        timeline_rows.append(
+            {
+                "Username": username,
+                "First Contribution": first_contribution,
+                "Last Contribution": last_contribution,
+                "Total Commits": len(dates)
+            }
+        )
+
+
+# =========================================
+# TIMELINE DATAFRAME
+# =========================================
+
+timeline_df = pd.DataFrame(
+    timeline_rows
+)
+
+
+if not timeline_df.empty:
+
+    timeline_df[
+        "First Contribution"
+    ] = pd.to_datetime(
+        timeline_df["First Contribution"]
+    )
+
+    timeline_df[
+        "Last Contribution"
+    ] = pd.to_datetime(
+        timeline_df["Last Contribution"]
+    )
+
+
+    timeline_df["Days Active"] = (
+        timeline_df["Last Contribution"]
+        - timeline_df["First Contribution"]
+    ).dt.days
+
+
+    timeline_df = timeline_df.sort_values(
+        by="Days Active",
+        ascending=False
+    ).reset_index(drop=True)
+
+
+    st.dataframe(
+        timeline_df,
+        width="stretch",
+        hide_index=True
+    )
+
+
+else:
+
+    st.info(
+        "No contributor timeline data is available "
+        "from the collected commits."
     )
 
 
@@ -434,32 +666,44 @@ else:
 
 st.divider()
 
-st.subheader("💡 Contributor Retention Insight")
+st.subheader(
+    "💡 Contributor Retention Insight"
+)
 
-if pull_requests and not return_df.empty:
 
-    if returning_count > one_time_count:
+if not activity_df.empty:
 
-        st.write(
-            "The available pull-request data suggests "
-            "that a larger proportion of contributors "
-            "returned to participate again. This is a "
-            "positive signal for contributor retention."
+    st.write(
+        f"The repository currently shows "
+        f"**{returning_count} returning contributors** "
+        f"and **{one_time_count} one-time contributors** "
+        f"among contributors identified through "
+        f"pull-request and commit activity."
+    )
+
+
+    if one_time_count > returning_count:
+
+        st.warning(
+            "There are more one-time contributors than "
+            "returning contributors. This is an important "
+            "area to investigate because first-time "
+            "contributors may not be receiving an "
+            "onboarding experience that encourages them "
+            "to return."
         )
 
     else:
 
-        st.write(
-            "The available pull-request data shows a "
-            "large proportion of one-time contributors. "
-            "This is worth investigating because it may "
-            "indicate that some first-time contributors "
-            "do not return."
+        st.success(
+            "Returning contributors currently outnumber "
+            "one-time contributors, which is a positive "
+            "retention signal."
         )
 
 else:
 
-    st.write(
+    st.info(
         "More contributor activity data is needed "
         "to determine meaningful retention patterns."
     )
@@ -472,6 +716,7 @@ else:
 st.divider()
 
 st.subheader("🔗 Continue")
+
 
 col1, col2 = st.columns(2)
 

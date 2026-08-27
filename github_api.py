@@ -3,18 +3,18 @@ import requests
 from dotenv import load_dotenv
 
 
-# -----------------------------------------
+# =========================================
 # LOAD ENVIRONMENT VARIABLES
-# -----------------------------------------
+# =========================================
 
 load_dotenv()
 
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 
 
-# -----------------------------------------
+# =========================================
 # COMMON HEADERS
-# -----------------------------------------
+# =========================================
 
 HEADERS = {
     "Accept": "application/vnd.github+json"
@@ -24,9 +24,9 @@ if GITHUB_TOKEN:
     HEADERS["Authorization"] = f"Bearer {GITHUB_TOKEN}"
 
 
-# -----------------------------------------
+# =========================================
 # GET REPOSITORY
-# -----------------------------------------
+# =========================================
 
 def get_repository(owner, repository):
     """
@@ -52,9 +52,9 @@ def get_repository(owner, repository):
     return None
 
 
-# -----------------------------------------
+# =========================================
 # GET CONTRIBUTORS
-# -----------------------------------------
+# =========================================
 
 def get_contributors(owner, repository):
     """
@@ -86,9 +86,9 @@ def get_contributors(owner, repository):
     return None
 
 
-# -----------------------------------------
+# =========================================
 # GET COMMIT ACTIVITY
-# -----------------------------------------
+# =========================================
 
 def get_commit_activity(owner, repository):
     """
@@ -117,9 +117,9 @@ def get_commit_activity(owner, repository):
     return None
 
 
-# -----------------------------------------
+# =========================================
 # GET PULL REQUESTS
-# -----------------------------------------
+# =========================================
 
 def get_pull_requests(owner, repository):
     """
@@ -136,6 +136,74 @@ def get_pull_requests(owner, repository):
         headers=HEADERS,
         params={
             "state": "all",
+            "per_page": 100
+        }
+    )
+
+    if response.status_code == 200:
+        return response.json()
+
+    print(
+        "GitHub API Error:",
+        response.status_code,
+        response.text
+    )
+
+    return None
+
+
+# =========================================
+# GET COMMITS
+# =========================================
+
+def get_commits(owner, repository):
+    """
+    Get commits made to a GitHub repository.
+    """
+
+    url = (
+        f"https://api.github.com/repos/"
+        f"{owner}/{repository}/commits"
+    )
+
+    response = requests.get(
+        url,
+        headers=HEADERS,
+        params={
+            "per_page": 100
+        }
+    )
+
+    if response.status_code == 200:
+        return response.json()
+
+    print(
+        "GitHub API Error:",
+        response.status_code,
+        response.text
+    )
+
+    return None
+
+# =========================================
+# GET CONTRIBUTOR COMMITS
+# =========================================
+
+def get_contributor_commits(owner, repository, username):
+    """
+    Get commits made by a specific contributor.
+    """
+
+    url = (
+        f"https://api.github.com/repos/"
+        f"{owner}/{repository}/commits"
+    )
+
+    response = requests.get(
+        url,
+        headers=HEADERS,
+        params={
+            "author": username,
             "per_page": 100
         }
     )

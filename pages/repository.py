@@ -4,13 +4,14 @@ from github_api import (
     get_repository,
     get_contributors,
     get_commit_activity,
-    get_pull_requests
+    get_pull_requests,
+    get_commits
 )
 
 
-# -----------------------------------------
+# =========================================
 # PAGE CONFIGURATION
-# -----------------------------------------
+# =========================================
 
 st.set_page_config(
     page_title="Analyze Repository",
@@ -19,9 +20,9 @@ st.set_page_config(
 )
 
 
-# -----------------------------------------
+# =========================================
 # SESSION STATE
-# -----------------------------------------
+# =========================================
 
 if "owner" not in st.session_state:
     st.session_state["owner"] = ""
@@ -44,10 +45,13 @@ if "commit_activity" not in st.session_state:
 if "pull_requests" not in st.session_state:
     st.session_state["pull_requests"] = None
 
+if "commits" not in st.session_state:
+    st.session_state["commits"] = None
 
-# -----------------------------------------
+
+# =========================================
 # PAGE TITLE
-# -----------------------------------------
+# =========================================
 
 st.title("🔍 Analyze Repository")
 
@@ -59,9 +63,9 @@ st.write(
 st.divider()
 
 
-# -----------------------------------------
+# =========================================
 # REPOSITORY DETAILS
-# -----------------------------------------
+# =========================================
 
 st.subheader("Repository Details")
 
@@ -78,9 +82,9 @@ repository = st.text_input(
 )
 
 
-# -----------------------------------------
+# =========================================
 # ANALYZE BUTTON
-# -----------------------------------------
+# =========================================
 
 if st.button(
     "🚀 Analyze Repository",
@@ -111,7 +115,7 @@ if st.button(
         st.session_state["repository"] = repository
 
         # -----------------------------------------
-        # GET REPOSITORY INFORMATION
+        # GET REPOSITORY
         # -----------------------------------------
 
         with st.spinner("Checking GitHub repository..."):
@@ -132,6 +136,7 @@ if st.button(
             st.session_state["contributors_data"] = None
             st.session_state["commit_activity"] = None
             st.session_state["pull_requests"] = None
+            st.session_state["commits"] = None
 
             st.error(
                 "❌ Repository not found. "
@@ -149,9 +154,10 @@ if st.button(
 
             st.success("✓ Repository verified")
 
-            # -----------------------------------------
+
+            # =========================================
             # GET CONTRIBUTORS
-            # -----------------------------------------
+            # =========================================
 
             with st.spinner("Collecting contributors..."):
 
@@ -169,13 +175,13 @@ if st.button(
             else:
 
                 st.warning(
-                    "⚠️ Repository found, but contributors "
-                    "could not be collected."
+                    "⚠️ Contributors could not be collected."
                 )
 
-            # -----------------------------------------
+
+            # =========================================
             # GET COMMIT ACTIVITY
-            # -----------------------------------------
+            # =========================================
 
             with st.spinner("Collecting commit activity..."):
 
@@ -196,9 +202,10 @@ if st.button(
                     "⚠️ Commit activity could not be collected."
                 )
 
-            # -----------------------------------------
+
+            # =========================================
             # GET PULL REQUESTS
-            # -----------------------------------------
+            # =========================================
 
             with st.spinner("Collecting pull requests..."):
 
@@ -217,6 +224,30 @@ if st.button(
 
                 st.warning(
                     "⚠️ Pull request data could not be collected."
+                )
+
+
+            # =========================================
+            # GET COMMITS
+            # =========================================
+
+            with st.spinner("Collecting commits..."):
+
+                commits = get_commits(
+                    owner,
+                    repository
+                )
+
+            st.session_state["commits"] = commits
+
+            if commits is not None:
+
+                st.success("✓ Commits collected")
+
+            else:
+
+                st.warning(
+                    "⚠️ Commit data could not be collected."
                 )
 
 
@@ -267,7 +298,9 @@ if st.button(
 
             st.subheader("Description")
 
-            description = repository_data.get("description")
+            description = repository_data.get(
+                "description"
+            )
 
             if description:
 
@@ -329,7 +362,7 @@ if st.button(
             if contributors_data:
 
                 st.write(
-                    f"Contributor data collected successfully."
+                    "Contributor data collected successfully."
                 )
 
                 st.metric(
@@ -339,7 +372,8 @@ if st.button(
 
                 st.info(
                     "Open the Contributors page to view "
-                    "detailed contributor activity and retention analysis."
+                    "detailed contributor activity and "
+                    "retention analysis."
                 )
 
             else:
@@ -360,7 +394,7 @@ if st.button(
                 st.subheader("📈 Commit Activity")
 
                 st.write(
-                    "Recent commit activity collected "
+                    "Weekly commit activity collected "
                     "from the repository."
                 )
 
@@ -384,14 +418,6 @@ if st.button(
                 st.divider()
 
                 st.subheader("🔀 Pull Request Activity")
-
-                st.write(
-                    "Pull requests collected from the repository."
-                )
-
-                # -----------------------------------------
-                # PR SUMMARY
-                # -----------------------------------------
 
                 total_prs = len(pull_requests)
 
@@ -429,7 +455,6 @@ if st.button(
                         "Closed PRs",
                         closed_prs
                     )
-
 
                 # -----------------------------------------
                 # PR TABLE
