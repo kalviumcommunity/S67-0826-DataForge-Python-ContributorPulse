@@ -81,10 +81,22 @@ class ContributorFeature(Base):
     retention_status: Mapped[str] = mapped_column(
         String(50), default="onboarding", nullable=False, index=True
     )  # onboarding, retained, churned
+    experience_level: Mapped[str] = mapped_column(
+        String(50), default="first_time", nullable=False
+    )  # first_time, repeat, core
+    is_active_maintainer: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
+    has_weekend_contributions: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False
+    )
     churn_risk_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)  # 0.0 to 1.0
     churn_risk_level: Mapped[str] = mapped_column(
         String(50), default="low", nullable=False
     )  # low, medium, high
+    risk_reason: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True
+    )
 
     last_active_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True

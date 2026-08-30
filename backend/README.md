@@ -73,15 +73,12 @@ Once running, access:
 
 ---
 
-## Data Cleaning & Validation Pipeline
+## Retention Feature Engineering & KPI Engine
 
-The backend features a deterministic data cleaning, validation, and activity linking engine (`backend.app.processing`) that:
-- Standardizes all timestamp fields to UTC ISO datetimes
-- Sanitizes and normalizes text bodies, titles, and author associations
-- Deduplicates entity records based on stable GitHub IDs and unique keys
-- Applies dataset-specific missing value imputation strategies
-- Quarantines and logs invalid records to the `ingestion_errors` table
-- Calculates processing statistics across all stages
+The analytics module (`backend.app.analytics`) calculates contributor-level journeys and repository KPIs:
+- **Contributor Features:** First contribution date, response time, review duration, merge time, 30d/60d/90d return flags, experience levels (`first_time`, `repeat`, `core`), maintainer & weekend flags, and rule-based explainable churn risk scoring.
+- **Repository KPIs:** Retention rates (30d/90d), merge rate, average response/review times, contributor growth, high-risk counts, and composite health score (0-100).
+- **Idempotency:** Results are persisted safely in the `contributor_features` table without duplicate row creation.
 
 ---
 

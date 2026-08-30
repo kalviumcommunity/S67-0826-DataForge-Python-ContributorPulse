@@ -2,7 +2,7 @@
 
 ## Maintainer Intelligence Platform
 
-ContributorPulse is an open-source maintainer intelligence platform that analyzes GitHub repository activity and measures first-time contributor retention. It ingests repository metadata, contributors, pull requests, issues, reviews, comments, and commits; cleans and stores durable data in PostgreSQL; exposes intelligence via FastAPI; and presents actionable dashboards and journeys in Streamlit.
+ContributorPulse is an open-source maintainer intelligence platform that analyzes GitHub repository activity and measures first-time contributor retention. It ingests repository metadata, contributors, pull requests, issues, reviews, comments, and commits; cleans and stores durable data in PostgreSQL; calculates contributor retention features and repository health KPIs; exposes intelligence via FastAPI; and presents actionable dashboards in Streamlit.
 
 ---
 
@@ -20,12 +20,14 @@ ContributorPulse is an open-source maintainer intelligence platform that analyze
 ContributorPulse/
 ├── alembic/                    # Alembic migration environment and versions
 │   ├── versions/
-│   │   └── 001_initial_schema.py
+│   │   ├── 001_initial_schema.py
+│   │   └── 002_add_feature_engine_fields.py
 │   └── env.py
 ├── app.py                      # Streamlit entrypoint
 ├── pages/                      # Streamlit application pages
 ├── backend/
 │   ├── app/
+│   │   ├── analytics/          # Retention feature engineering & KPI engine
 │   │   ├── api/                # FastAPI routers (health, analyses, repositories)
 │   │   ├── core/               # Configuration and application settings
 │   │   ├── db/                 # Database engine, sessions, and connectivity
@@ -35,11 +37,11 @@ ContributorPulse/
 │   │   ├── schemas/            # Pydantic request/response models
 │   │   ├── services/           # Ingestion orchestrator and domain services
 │   │   └── main.py             # FastAPI application factory and entrypoint
-│   ├── tests/                  # Backend test suite (models, migrations, endpoints, client, pipeline)
+│   ├── tests/                  # Backend test suite (models, migrations, endpoints, client, analytics)
 │   ├── requirements.txt        # Backend dependencies
 │   └── README.md               # Backend documentation
 ├── database/                   # Database schemas, models, migrations
-├── docs/                       # API contracts and architecture specifications
+├── docs/                       # API contracts, cleaning specs, and metric definitions
 ├── alembic.ini                 # Alembic configuration
 ├── docker-compose.yml          # Local PostgreSQL container service
 ├── .env.example                # Environment configuration template
@@ -106,5 +108,5 @@ streamlit run app.py
 Run the automated test suite with coverage:
 
 ```bash
-pytest
+pytest backend/tests -v --cov=backend/app --cov-report=term-missing
 ```
