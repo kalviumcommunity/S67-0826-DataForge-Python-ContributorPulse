@@ -73,6 +73,17 @@ Once running, access:
 
 ---
 
+## GitHub REST API Integration
+
+The backend includes a production-grade GitHub client (`backend.app.integrations.github.GitHubClient`) featuring:
+- Authorization header handling from environment configuration
+- Multi-page pagination
+- Rate-limit response handling (`x-ratelimit-remaining`, `retry-after`)
+- Transient failure retry with bounded exponential backoff
+- Typed exception hierarchy (`GitHubAuthenticationError`, `GitHubRateLimitError`, `GitHubNotFoundError`, `GitHubValidationError`, etc.)
+
+---
+
 ## Running Tests
 
 Execute the backend test suite with coverage report:
