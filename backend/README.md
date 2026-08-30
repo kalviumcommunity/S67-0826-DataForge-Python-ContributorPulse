@@ -25,12 +25,18 @@ Key environment variables:
 - `DATABASE_URL`: PostgreSQL connection string (`postgresql://postgres:postgres@localhost:5432/contributor_pulse`)
 - `GITHUB_TOKEN`: GitHub personal access token
 
-### Local Database Setup
+### Local Database Setup & Migrations
 
 Start the PostgreSQL service using Docker Compose:
 
 ```bash
 docker compose up -d db
+```
+
+Run schema migrations:
+
+```bash
+alembic upgrade head
 ```
 
 To stop the database:

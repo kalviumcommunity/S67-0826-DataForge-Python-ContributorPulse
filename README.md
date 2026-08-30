@@ -18,6 +18,10 @@ ContributorPulse is an open-source maintainer intelligence platform that analyze
 
 ```
 ContributorPulse/
+├── alembic/                    # Alembic migration environment and versions
+│   ├── versions/
+│   │   └── 001_initial_schema.py
+│   └── env.py
 ├── app.py                      # Streamlit entrypoint
 ├── pages/                      # Streamlit application pages
 ├── backend/
@@ -25,13 +29,15 @@ ContributorPulse/
 │   │   ├── api/                # FastAPI routers (health, ingestion, analytics)
 │   │   ├── core/               # Configuration and application settings
 │   │   ├── db/                 # Database engine, sessions, and connectivity
+│   │   ├── models/             # SQLAlchemy ORM domain models
 │   │   ├── schemas/            # Pydantic request/response models
 │   │   └── main.py             # FastAPI application factory and entrypoint
-│   ├── tests/                  # Backend test suite
+│   ├── tests/                  # Backend test suite (models, migrations, endpoints)
 │   ├── requirements.txt        # Backend dependencies
 │   └── README.md               # Backend documentation
 ├── database/                   # Database schemas, models, migrations
 ├── docs/                       # API contracts and architecture specifications
+├── alembic.ini                 # Alembic configuration
 ├── docker-compose.yml          # Local PostgreSQL container service
 ├── .env.example                # Environment configuration template
 ├── pyproject.toml              # Build and test configuration
@@ -62,13 +68,19 @@ Verify health:
 docker compose ps
 ```
 
-### 3. Install Dependencies
+### 3. Run Alembic Database Migrations
+
+```bash
+alembic upgrade head
+```
+
+### 4. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 4. Start the FastAPI Backend Service
+### 5. Start the FastAPI Backend Service
 
 ```bash
 uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -78,7 +90,7 @@ uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 - Health Check: `http://localhost:8000/health`
 - Database Check: `http://localhost:8000/health/db`
 
-### 5. Start the Streamlit Frontend
+### 6. Start the Streamlit Frontend
 
 ```bash
 streamlit run app.py
