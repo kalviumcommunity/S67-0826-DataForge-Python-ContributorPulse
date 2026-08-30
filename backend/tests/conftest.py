@@ -17,7 +17,7 @@ def test_settings() -> Settings:
         VERSION="0.1.0-test",
         CORS_ORIGINS=["http://testserver"],
         GITHUB_TOKEN="ghp_mock_token_for_testing_1234567890",
-        DATABASE_URL="postgresql://test:test@localhost:5432/test_db",
+        DATABASE_URL="sqlite:///:memory:",
     )
 
 

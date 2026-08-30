@@ -8,6 +8,7 @@ FastAPI-powered intelligence and analytics engine for analyzing GitHub repositor
 
 ### Prerequisites
 - Python 3.10+
+- Docker & Docker Compose
 - `pip` or virtualenv package manager
 
 ### Environment Configuration
@@ -21,26 +22,36 @@ Key environment variables:
 - `ENVIRONMENT`: `development` | `testing` | `production`
 - `API_HOST`: Bind address (default: `0.0.0.0`)
 - `API_PORT`: Bind port (default: `8000`)
-- `DATABASE_URL`: PostgreSQL connection string
+- `DATABASE_URL`: PostgreSQL connection string (`postgresql://postgres:postgres@localhost:5432/contributor_pulse`)
 - `GITHUB_TOKEN`: GitHub personal access token
 
-### Installation
+### Local Database Setup
 
-Install dependencies:
+Start the PostgreSQL service using Docker Compose:
 
 ```bash
-pip install -r backend/requirements.txt
+docker compose up -d db
 ```
 
-Or install all project dependencies from the root:
-
+To stop the database:
 ```bash
-pip install -r requirements.txt
+docker compose stop db
+```
+
+To reset the database and volume:
+```bash
+docker compose down -v
 ```
 
 ---
 
-## Running Locally
+## Installation & Running Locally
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
 
 Start the FastAPI application using Uvicorn:
 
@@ -48,16 +59,11 @@ Start the FastAPI application using Uvicorn:
 uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Or run directly via python:
-
-```bash
-python -m backend.app.main
-```
-
 Once running, access:
 - **Interactive OpenAPI Documentation:** [http://localhost:8000/docs](http://localhost:8000/docs)
 - **ReDoc Documentation:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
 - **Health Check:** [http://localhost:8000/health](http://localhost:8000/health)
+- **Database Health:** [http://localhost:8000/health/db](http://localhost:8000/health/db)
 
 ---
 
