@@ -1,56 +1,81 @@
-# Analyse Retain
+# ContributorPulse
 
 ## Maintainer Intelligence Platform
 
-Analyse Retain is a contributor retention analytics platform designed to help open-source maintainers understand why first-time contributors do or do not return.
+ContributorPulse is an open-source maintainer intelligence platform that analyzes GitHub repository activity and measures first-time contributor retention. It ingests repository metadata, contributors, pull requests, issues, reviews, comments, and commits; cleans and stores durable data in PostgreSQL; exposes intelligence via FastAPI; and presents actionable dashboards and journeys in Streamlit.
 
-The platform analyzes:
+---
 
-- Pull request activity
-- Review and response times
-- Contributor activity
-- First-time contributor journeys
-- Retention behavior
-- Contributor risk signals
-- Repository benchmarking
-- Retention analytics
-- Generated reports
+## Team Ownership
 
-## Project Goal
+- **Abilasha (Frontend):** Streamlit pages, charts, filters, KPI cards, UX, and export controls.
+- **Keerthana (Backend):** GitHub API client, ingestion, data cleaning, feature engineering, KPI engine, and FastAPI endpoints.
+- **Vijay (Database & Infrastructure):** PostgreSQL, SQLAlchemy models, Alembic migrations, SQL views, Docker Compose, GitHub Actions, and documentation.
 
-Identify onboarding experiences and repository-level factors that discourage first-time contributors from returning, and provide maintainers with actionable insights to improve contributor retention.
+---
 
-## Tech Stack
+## Architecture Overview
 
-### Frontend
-- React
-- Vite
-- Tailwind CSS
+```
+ContributorPulse/
+├── app.py                      # Streamlit entrypoint
+├── pages/                      # Streamlit application pages
+├── backend/
+│   ├── app/
+│   │   ├── api/                # FastAPI routers (health, ingestion, analytics)
+│   │   ├── core/               # Configuration and application settings
+│   │   ├── schemas/            # Pydantic request/response models
+│   │   └── main.py             # FastAPI application factory and entrypoint
+│   ├── tests/                  # Backend test suite
+│   ├── requirements.txt        # Backend dependencies
+│   └── README.md               # Backend documentation
+├── database/                   # Database schemas, models, migrations
+├── docs/                       # API contracts and architecture specifications
+├── .env.example                # Environment configuration template
+├── pyproject.toml              # Build and test configuration
+├── requirements.txt            # Unified project dependencies
+└── README.md
+```
 
-### Backend
-- Python
-- FastAPI
+---
 
-### Data
-- GitHub data
-- Repository contributor activity
-- Pull requests
-- Reviews and comments
-- Contributor retention signals
+## Quickstart & Local Execution
 
-## Frontend Pages
+### 1. Environment Setup
 
-- Dashboard
-- Repository Analysis
-- Contributors
-- Contributor Journey
-- Contributor Retention Analytics
-- Repository Benchmarking
-- Reports
-- Settings
+Copy `.env.example` to `.env` and fill in your settings:
 
-## Development
+```bash
+cp .env.example .env
+```
 
-This repository contains the frontend and backend implementation of Analyse Retain.
+### 2. Install Dependencies
 
-More documentation will be added as development progresses.
+```bash
+pip install -r requirements.txt
+```
+
+### 3. Start the FastAPI Backend Service
+
+```bash
+uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+- API Docs: `http://localhost:8000/docs`
+- Health Check: `http://localhost:8000/health`
+
+### 4. Start the Streamlit Frontend
+
+```bash
+streamlit run app.py
+```
+
+---
+
+## Testing & Quality Assurance
+
+Run the automated test suite with coverage:
+
+```bash
+pytest
+```
