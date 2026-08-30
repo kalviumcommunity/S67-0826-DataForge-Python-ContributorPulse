@@ -38,7 +38,10 @@ st.divider()
 
 if not owner or not repo:
     st.info("👈 Please enter a repository owner and name in the **Dashboard** or **Analyze Repository** page first.")
-    st.page_link("pages/dashboard.py", label="📊 Go to Dashboard", icon="📊")
+    try:
+        st.page_link("pages/dashboard.py", label="📊 Go to Dashboard", icon="📊")
+    except Exception:
+        pass
     st.stop()
 
 # ==============================================================================

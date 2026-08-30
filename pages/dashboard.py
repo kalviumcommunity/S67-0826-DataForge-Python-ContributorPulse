@@ -42,13 +42,17 @@ if "analysis_run" not in st.session_state:
     st.session_state["analysis_run"] = None
 if "selected_view" not in st.session_state:
     st.session_state["selected_view"] = "🏛️ Overview & Health"
+if "time_period" not in st.session_state:
+    st.session_state["time_period"] = "All Ingested History"
 
 # ==============================================================================
-# Helper Functions & UI Cards
+# Helper Functions & Safe Formatters
 # ==============================================================================
 
-def render_health_badge(score: float) -> str:
+def render_health_badge(score: Optional[float]) -> str:
     """Return health classification and badge format."""
+    if score is None:
+        return "⚪ Unknown Health"
     if score >= 80:
         return f"🟢 Excellent ({score:.1f}/100)"
     elif score >= 60:
@@ -60,7 +64,7 @@ def render_health_badge(score: float) -> str:
 
 
 def safe_metric(value: Any, unit: str = "", default: str = "N/A") -> str:
-    """Format metric value safely."""
+    """Format metric value safely without throwing on None or empty."""
     if value is None:
         return default
     if isinstance(value, float):
@@ -69,7 +73,7 @@ def safe_metric(value: Any, unit: str = "", default: str = "N/A") -> str:
 
 
 # ==============================================================================
-# Sidebar - Repository Selection & View Navigation
+# Sidebar - Repository Selection, Time-Period Window & View Navigation
 # ==============================================================================
 
 st.sidebar.title("📊 ContributorPulse")
@@ -93,6 +97,23 @@ input_repo = st.sidebar.text_input(
 col_trig, col_ref = st.sidebar.columns([3, 2])
 trigger_btn = col_trig.button("🚀 Analyze", type="primary", use_container_width=True)
 refresh_btn = col_ref.button("🔄 Refresh", use_container_width=True)
+
+st.sidebar.divider()
+st.sidebar.subheader("Time-Period Filter")
+time_period_options = [
+    "All Ingested History",
+    "Last 30 Days",
+    "Last 90 Days",
+    "Last 180 Days",
+    "Last 365 Days",
+]
+selected_period = st.sidebar.selectbox(
+    "Active Cohort Window",
+    time_period_options,
+    index=time_period_options.index(st.session_state.get("time_period", "All Ingested History")),
+    help="Filters retention analytics and time-series trends by cohort window.",
+)
+st.session_state["time_period"] = selected_period
 
 if trigger_btn or (refresh_btn and input_owner and input_repo):
     if not input_owner.strip() or not input_repo.strip():
@@ -163,7 +184,7 @@ if not owner or not repo:
 # ==============================================================================
 
 st.title(f"{selected_view}")
-st.caption(f"Repository: **{owner}/{repo}** | Maintainer Intelligence & Analytics")
+st.caption(f"Repository: **{owner}/{repo}** | Time Period: **{selected_period}** | Maintainer Intelligence")
 st.divider()
 
 # ==============================================================================
@@ -469,7 +490,7 @@ elif selected_view == "⚖️ Repository Comparison & Monitoring":
     st.subheader("Side-by-Side Repository Comparison")
     st.write("Compare contributor health, retention, and merge velocity across multiple repositories.")
 
-    default_compare = f"{owner}/{repo}"
+    default_compare = f"{owner}/{repo}" if (owner and repo) else ""
     compare_input = st.text_input(
         "Repositories to Compare (comma-separated owner/repo pairs)",
         value=default_compare,
@@ -479,7 +500,7 @@ elif selected_view == "⚖️ Repository Comparison & Monitoring":
     if st.button("⚖️ Compare Repositories", type="primary"):
         repo_list = [r.strip() for r in compare_input.split(",") if r.strip()]
         if not repo_list:
-            st.error("Please enter at least one repository to compare.")
+            st.warning("⚠️ Please enter at least one valid repository (owner/name) to compare.")
         else:
             try:
                 with st.spinner("Fetching comparison metrics..."):
@@ -488,7 +509,16 @@ elif selected_view == "⚖️ Repository Comparison & Monitoring":
                 if not comp_data or not comp_data.get("repositories"):
                     st.info("ℹ️ No comparative data found for the selected repositories.")
                 else:
-                    df_comp = pd.DataFrame(comp_data["repositories"])
+                    repos = comp_data.get("repositories", [])
+                    # Normalize missing or None fields safely
+                    for r in repos:
+                        r["health_score"] = r.get("health_score") or 0.0
+                        r["retention_rate_30d"] = r.get("retention_rate_30d") or 0.0
+                        r["merge_rate"] = r.get("merge_rate") or 0.0
+                        r["total_contributors"] = r.get("total_contributors") or 0
+                        r["total_prs"] = r.get("total_prs") or 0
+
+                    df_comp = pd.DataFrame(repos)
 
                     # KPI Comparison Table
                     st.subheader("Comparative Health & Retention Summary")
@@ -516,7 +546,7 @@ elif selected_view == "⚖️ Repository Comparison & Monitoring":
                         hide_index=True,
                     )
 
-                    # Comparative Bar Chart
+                    # Comparative Bar Chart (handles 1, 2, or N repositories gracefully)
                     fig_comp = px.bar(
                         df_comp,
                         x="full_name",
