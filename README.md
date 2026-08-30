@@ -24,11 +24,16 @@ ContributorPulse/
 │   │   └── 002_add_feature_engine_fields.py
 │   └── env.py
 ├── app.py                      # Streamlit entrypoint
+├── api_client.py               # Streamlit-to-FastAPI client bridge
+├── github_api.py               # Frontend API helper wrapper
 ├── pages/                      # Streamlit application pages
+│   ├── repository.py           # Repository analysis and overview page
+│   ├── contributors.py         # Contributor journeys and tables
+│   └── dashboard.py            # Overview dashboard
 ├── backend/
 │   ├── app/
 │   │   ├── analytics/          # Retention feature engineering & KPI engine
-│   │   ├── api/                # FastAPI routers (health, analyses, repositories)
+│   │   ├── api/                # FastAPI routers (health, analyses, repositories, analytics)
 │   │   ├── core/               # Configuration and application settings
 │   │   ├── db/                 # Database engine, sessions, and connectivity
 │   │   ├── integrations/       # External clients (GitHub REST API client)
@@ -52,54 +57,42 @@ ContributorPulse/
 
 ---
 
-## Quickstart & Local Execution
+## Local Development Run Order
 
-### 1. Environment Setup
+To run the complete end-to-end ContributorPulse platform locally:
 
-Copy `.env.example` to `.env` and fill in your settings:
-
-```bash
-cp .env.example .env
-```
-
-### 2. Start PostgreSQL Container
-
+### 1. Start PostgreSQL Container
 ```bash
 docker compose up -d db
 ```
-
 Verify health:
 ```bash
 docker compose ps
 ```
 
-### 3. Run Alembic Database Migrations
-
+### 2. Apply Database Schema Migrations
 ```bash
 alembic upgrade head
 ```
 
-### 4. Install Dependencies
-
-```bash
-pip install -r requirements.txt
-```
-
-### 5. Start the FastAPI Backend Service
-
+### 3. Start the FastAPI Backend Service
 ```bash
 uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
+- API Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+- Health Check: [http://localhost:8000/health](http://localhost:8000/health)
 
-- API Docs: `http://localhost:8000/docs`
-- Health Check: `http://localhost:8000/health`
-- Database Check: `http://localhost:8000/health/db`
-
-### 6. Start the Streamlit Frontend
-
+### 4. Start the Streamlit Frontend Application
 ```bash
 streamlit run app.py
 ```
+- Web Application: [http://localhost:8501](http://localhost:8501)
+
+### 5. Analyze a Repository
+1. Navigate to **🔍 Analyze Repository** via the sidebar.
+2. Enter the **Repository Owner** (e.g. `kalviumcommunity`) and **Repository Name** (e.g. `S67-0826-DataForge-Python-ContributorPulse`).
+3. Click **🚀 Analyze Repository**.
+4. View the real-time analysis status, record counts, and verified repository health metrics.
 
 ---
 
