@@ -29,10 +29,11 @@ ContributorPulse/
 │   │   ├── api/                # FastAPI routers (health, ingestion, analytics)
 │   │   ├── core/               # Configuration and application settings
 │   │   ├── db/                 # Database engine, sessions, and connectivity
+│   │   ├── integrations/       # External clients (GitHub REST API client)
 │   │   ├── models/             # SQLAlchemy ORM domain models
 │   │   ├── schemas/            # Pydantic request/response models
 │   │   └── main.py             # FastAPI application factory and entrypoint
-│   ├── tests/                  # Backend test suite (models, migrations, endpoints)
+│   ├── tests/                  # Backend test suite (models, migrations, endpoints, client)
 │   ├── requirements.txt        # Backend dependencies
 │   └── README.md               # Backend documentation
 ├── database/                   # Database schemas, models, migrations
