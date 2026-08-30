@@ -606,6 +606,26 @@ class IngestionService:
                 self.log_error(repo.id, analysis_run.id, "commits", "commit_list", None, str(exc))
 
             # ------------------------------------------------------------------
+            # Stage 6: Data Cleaning & Validation Pipeline
+            # ------------------------------------------------------------------
+            logger.info("Executing DataCleaningPipeline for %s...", repo.full_name)
+            try:
+                from backend.app.processing.pipeline import DataCleaningPipeline
+
+                pipeline = DataCleaningPipeline(
+                    db=self.db,
+                    repository_id=repo.id,
+                    analysis_run_id=analysis_run.id,
+                )
+                processing_stats = pipeline.run()
+                if processing_stats.invalid_count > 0:
+                    error_count += processing_stats.invalid_count
+            except Exception as pipe_exc:
+                error_count += 1
+                logger.warning("Error running cleaning pipeline: %s", pipe_exc)
+                self.log_error(repo.id, analysis_run.id, "cleaning_validation", "pipeline", None, str(pipe_exc))
+
+            # ------------------------------------------------------------------
             # Finalize Analysis Run Counts & Status
             # ------------------------------------------------------------------
             completed_at = utcnow()

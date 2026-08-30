@@ -73,14 +73,15 @@ Once running, access:
 
 ---
 
-## GitHub REST API Integration
+## Data Cleaning & Validation Pipeline
 
-The backend includes a production-grade GitHub client (`backend.app.integrations.github.GitHubClient`) featuring:
-- Authorization header handling from environment configuration
-- Multi-page pagination
-- Rate-limit response handling (`x-ratelimit-remaining`, `retry-after`)
-- Transient failure retry with bounded exponential backoff
-- Typed exception hierarchy (`GitHubAuthenticationError`, `GitHubRateLimitError`, `GitHubNotFoundError`, `GitHubValidationError`, etc.)
+The backend features a deterministic data cleaning, validation, and activity linking engine (`backend.app.processing`) that:
+- Standardizes all timestamp fields to UTC ISO datetimes
+- Sanitizes and normalizes text bodies, titles, and author associations
+- Deduplicates entity records based on stable GitHub IDs and unique keys
+- Applies dataset-specific missing value imputation strategies
+- Quarantines and logs invalid records to the `ingestion_errors` table
+- Calculates processing statistics across all stages
 
 ---
 

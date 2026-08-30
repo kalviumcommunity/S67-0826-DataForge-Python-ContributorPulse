@@ -26,14 +26,16 @@ ContributorPulse/
 ├── pages/                      # Streamlit application pages
 ├── backend/
 │   ├── app/
-│   │   ├── api/                # FastAPI routers (health, ingestion, analytics)
+│   │   ├── api/                # FastAPI routers (health, analyses, repositories)
 │   │   ├── core/               # Configuration and application settings
 │   │   ├── db/                 # Database engine, sessions, and connectivity
 │   │   ├── integrations/       # External clients (GitHub REST API client)
 │   │   ├── models/             # SQLAlchemy ORM domain models
+│   │   ├── processing/         # Data cleaning, validation, and normalization pipeline
 │   │   ├── schemas/            # Pydantic request/response models
+│   │   ├── services/           # Ingestion orchestrator and domain services
 │   │   └── main.py             # FastAPI application factory and entrypoint
-│   ├── tests/                  # Backend test suite (models, migrations, endpoints, client)
+│   ├── tests/                  # Backend test suite (models, migrations, endpoints, client, pipeline)
 │   ├── requirements.txt        # Backend dependencies
 │   └── README.md               # Backend documentation
 ├── database/                   # Database schemas, models, migrations
