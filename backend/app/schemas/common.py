@@ -30,6 +30,35 @@ class HealthResponse(BaseModel):
         description="Current environment",
         json_schema_extra={"example": "development"},
     )
+    database: Optional[str] = Field(
+        default=None,
+        description="Database connection status (connected, disconnected, not_configured)",
+        json_schema_extra={"example": "connected"},
+    )
+    timestamp: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Current UTC timestamp",
+    )
+
+
+class DatabaseHealthResponse(BaseModel):
+    """Schema for specific database connectivity health check."""
+
+    status: str = Field(
+        ...,
+        description="Database status: healthy or degraded",
+        json_schema_extra={"example": "healthy"},
+    )
+    database_connected: bool = Field(
+        ...,
+        description="Whether database connection is active",
+        json_schema_extra={"example": True},
+    )
+    database_url_configured: bool = Field(
+        ...,
+        description="Whether DATABASE_URL is set",
+        json_schema_extra={"example": True},
+    )
     timestamp: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="Current UTC timestamp",

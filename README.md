@@ -24,6 +24,7 @@ ContributorPulse/
 │   ├── app/
 │   │   ├── api/                # FastAPI routers (health, ingestion, analytics)
 │   │   ├── core/               # Configuration and application settings
+│   │   ├── db/                 # Database engine, sessions, and connectivity
 │   │   ├── schemas/            # Pydantic request/response models
 │   │   └── main.py             # FastAPI application factory and entrypoint
 │   ├── tests/                  # Backend test suite
@@ -31,6 +32,7 @@ ContributorPulse/
 │   └── README.md               # Backend documentation
 ├── database/                   # Database schemas, models, migrations
 ├── docs/                       # API contracts and architecture specifications
+├── docker-compose.yml          # Local PostgreSQL container service
 ├── .env.example                # Environment configuration template
 ├── pyproject.toml              # Build and test configuration
 ├── requirements.txt            # Unified project dependencies
@@ -49,13 +51,24 @@ Copy `.env.example` to `.env` and fill in your settings:
 cp .env.example .env
 ```
 
-### 2. Install Dependencies
+### 2. Start PostgreSQL Container
+
+```bash
+docker compose up -d db
+```
+
+Verify health:
+```bash
+docker compose ps
+```
+
+### 3. Install Dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 3. Start the FastAPI Backend Service
+### 4. Start the FastAPI Backend Service
 
 ```bash
 uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
@@ -63,8 +76,9 @@ uvicorn backend.app.main:app --host 0.0.0.0 --port 8000 --reload
 
 - API Docs: `http://localhost:8000/docs`
 - Health Check: `http://localhost:8000/health`
+- Database Check: `http://localhost:8000/health/db`
 
-### 4. Start the Streamlit Frontend
+### 5. Start the Streamlit Frontend
 
 ```bash
 streamlit run app.py
