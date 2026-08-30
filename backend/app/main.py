@@ -10,6 +10,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.app.api.analyses import router as analyses_router
 from backend.app.api.analytics import router as analytics_router
+from backend.app.api.exports import router as exports_router
 from backend.app.api.health import router as health_router
 from backend.app.api.repositories import router as repositories_router
 from backend.app.core.config import Settings, get_settings
@@ -167,6 +168,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(analyses_router, prefix=app_settings.API_V1_STR)
     app.include_router(repositories_router, prefix=app_settings.API_V1_STR)
     app.include_router(analytics_router, prefix=app_settings.API_V1_STR)
+    app.include_router(exports_router, prefix=app_settings.API_V1_STR)
 
     return app
 

@@ -1,9 +1,12 @@
-"""Health check and status API routes."""
+"""Health check, readiness, and status API routes."""
 
 from datetime import datetime, timezone
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
 from backend.app.core.config import Settings, get_settings
-from backend.app.db.session import check_db_connectivity, get_engine
+from backend.app.db.session import check_db_connectivity, get_db, get_engine
 from backend.app.schemas.common import DatabaseHealthResponse, HealthResponse
 
 router = APIRouter(tags=["Health"])
@@ -13,20 +16,12 @@ router = APIRouter(tags=["Health"])
     "/health",
     response_model=HealthResponse,
     summary="Service Health Check",
-    description="Returns the operational status, version, environment, and UTC timestamp of the backend service. Does not require external credentials.",
+    description="Returns operational status, version, environment, and UTC timestamp of the backend service. Does not require external credentials.",
 )
 def get_health_status(
     settings: Settings = Depends(get_settings),
 ) -> HealthResponse:
-    """
-    Check the health of the ContributorPulse API service.
-
-    Args:
-        settings: Application settings injected via dependency injection.
-
-    Returns:
-        HealthResponse: Service health metadata.
-    """
+    """Check the health of the ContributorPulse API service."""
     db_status = "not_configured"
     if settings.DATABASE_URL:
         engine = get_engine(settings.DATABASE_URL)
@@ -51,15 +46,7 @@ def get_health_status(
 def get_database_health(
     settings: Settings = Depends(get_settings),
 ) -> DatabaseHealthResponse:
-    """
-    Check database connectivity.
-
-    Args:
-        settings: Application settings.
-
-    Returns:
-        DatabaseHealthResponse: Status of database connection.
-    """
+    """Check database connectivity."""
     is_configured = bool(settings.DATABASE_URL)
     engine = get_engine(settings.DATABASE_URL) if is_configured else None
     is_connected = check_db_connectivity(engine) if is_configured else False
@@ -71,3 +58,34 @@ def get_database_health(
         database_url_configured=is_configured,
         timestamp=datetime.now(timezone.utc),
     )
+
+
+@router.get(
+    "/health/ready",
+    summary="Service Readiness Probe",
+    description="Production-safe readiness check confirming both service and database connectivity.",
+)
+def get_readiness_probe(
+    settings: Settings = Depends(get_settings),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Readiness probe for Kubernetes and Docker container healthchecks."""
+    try:
+        # Check active session connectivity
+        db.execute(select(1)).first()
+        is_connected = True
+    except Exception:
+        is_connected = False
+
+    if not is_connected:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Database connection is not ready.",
+        )
+
+    return {
+        "status": "ready",
+        "database_connected": True,
+        "environment": settings.ENVIRONMENT,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
