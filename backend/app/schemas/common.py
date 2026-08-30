@@ -1,4 +1,4 @@
-"""Common Pydantic models for API responses and errors."""
+"""Common Pydantic models for API responses, pagination, and errors."""
 
 from datetime import datetime, timezone
 from typing import Any, Dict, Generic, List, Optional, TypeVar
@@ -82,6 +82,14 @@ class ErrorDetail(BaseModel):
     code: Optional[str] = Field(default=None, description="Specific error code")
 
 
+class ErrorEnvelope(BaseModel):
+    """Structured error object inside error response."""
+
+    code: str
+    message: str
+    details: Optional[List[Dict[str, Any]]] = None
+
+
 class ErrorResponse(BaseModel):
     """Standardized API Error Response schema."""
 
@@ -102,9 +110,42 @@ class ErrorResponse(BaseModel):
     )
 
 
-class APIResponse(BaseModel, Generic[DataT]):
+class PaginationParams(BaseModel):
+    """Standard pagination query parameters."""
+
+    page: int = Field(default=1, ge=1, description="Page number (1-indexed)")
+    per_page: int = Field(default=20, ge=1, le=100, description="Items per page")
+
+
+class PaginationMeta(BaseModel):
+    """Pagination metadata included in paginated responses."""
+
+    total_records: int = Field(..., ge=0, description="Total count of matching records")
+    total_pages: int = Field(..., ge=0, description="Total pages available")
+    current_page: int = Field(..., ge=1, description="Current page number")
+    per_page: int = Field(..., ge=1, description="Number of items per page")
+    has_next: bool = Field(..., description="Whether there is a next page")
+    has_previous: bool = Field(..., description="Whether there is a previous page")
+
+
+class DataResponse(BaseModel, Generic[DataT]):
     """Standardized generic success envelope."""
 
     status: str = Field(default="success", description="Status string")
     data: DataT = Field(..., description="Response payload")
+    message: Optional[str] = Field(default=None, description="Optional informational message")
+
+
+class APIResponse(DataResponse[DataT], Generic[DataT]):
+    """Alias for DataResponse."""
+
+    pass
+
+
+class PaginatedDataResponse(BaseModel, Generic[DataT]):
+    """Standardized paginated success envelope."""
+
+    status: str = Field(default="success", description="Status string")
+    data: List[DataT] = Field(..., description="List of items")
+    pagination: PaginationMeta = Field(..., description="Pagination metadata")
     message: Optional[str] = Field(default=None, description="Optional informational message")
