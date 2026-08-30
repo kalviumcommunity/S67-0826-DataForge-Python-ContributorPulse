@@ -1,13 +1,13 @@
 import streamlit as st
-
-from github_api import (
-    get_repository,
-    get_contributors,
-    get_commit_activity,
-    get_pull_requests,
-    get_commits
+from api_client import (
+    APIConnectionError,
+    APINotFoundError,
+    APIRateLimitError,
+    APIServerError,
+    APITimeoutError,
+    APIValidationError,
+    BackendAPIClient,
 )
-
 
 # =========================================
 # PAGE CONFIGURATION
@@ -19,6 +19,7 @@ st.set_page_config(
     layout="wide"
 )
 
+client = BackendAPIClient()
 
 # =========================================
 # SESSION STATE
@@ -33,21 +34,17 @@ if "repository" not in st.session_state:
 if "analysis_started" not in st.session_state:
     st.session_state["analysis_started"] = False
 
+if "analysis_run" not in st.session_state:
+    st.session_state["analysis_run"] = None
+
 if "repository_data" not in st.session_state:
     st.session_state["repository_data"] = None
 
-if "contributors_data" not in st.session_state:
-    st.session_state["contributors_data"] = None
+if "repository_summary" not in st.session_state:
+    st.session_state["repository_summary"] = None
 
-if "commit_activity" not in st.session_state:
-    st.session_state["commit_activity"] = None
-
-if "pull_requests" not in st.session_state:
-    st.session_state["pull_requests"] = None
-
-if "commits" not in st.session_state:
-    st.session_state["commits"] = None
-
+if "repository_kpis" not in st.session_state:
+    st.session_state["repository_kpis"] = None
 
 # =========================================
 # PAGE TITLE
@@ -56,499 +53,119 @@ if "commits" not in st.session_state:
 st.title("🔍 Analyze Repository")
 
 st.write(
-    "Enter a GitHub repository to analyze contributor activity "
-    "and understand contributor retention."
+    "Enter a GitHub repository to analyze contributor activity, "
+    "onboarding velocity, and first-time contributor retention."
 )
 
 st.divider()
 
-
 # =========================================
-# REPOSITORY DETAILS
+# REPOSITORY DETAILS FORM
 # =========================================
 
 st.subheader("Repository Details")
 
-owner = st.text_input(
-    "Repository Owner",
-    value=st.session_state["owner"],
-    placeholder="e.g. flutter"
-)
-
-repository = st.text_input(
-    "Repository Name",
-    value=st.session_state["repository"],
-    placeholder="e.g. flutter"
-)
-
+col_a, col_b = st.columns(2)
+with col_a:
+    owner = st.text_input(
+        "Repository Owner",
+        value=st.session_state["owner"],
+        placeholder="e.g. kalviumcommunity",
+    )
+with col_b:
+    repository = st.text_input(
+        "Repository Name",
+        value=st.session_state["repository"],
+        placeholder="e.g. S67-0826-DataForge-Python-ContributorPulse",
+    )
 
 # =========================================
-# ANALYZE BUTTON
+# ANALYZE BUTTON & EXECUTION
 # =========================================
 
-if st.button(
-    "🚀 Analyze Repository",
-    type="primary"
-):
-
+if st.button("🚀 Analyze Repository", type="primary"):
     owner = owner.strip()
     repository = repository.strip()
 
-    # -----------------------------------------
-    # VALIDATION
-    # -----------------------------------------
-
     if not owner or not repository:
-
-        st.error(
-            "Please enter both the repository owner "
-            "and repository name."
-        )
-
+        st.error("Please enter both the repository owner and repository name.")
     else:
-
-        # -----------------------------------------
-        # SAVE REPOSITORY DETAILS
-        # -----------------------------------------
-
         st.session_state["owner"] = owner
         st.session_state["repository"] = repository
 
-        # -----------------------------------------
-        # GET REPOSITORY
-        # -----------------------------------------
+        try:
+            with st.spinner("Connecting to FastAPI backend and ingesting repository data..."):
+                analysis_run = client.trigger_analysis(owner, repository)
+                st.session_state["analysis_run"] = analysis_run
+                st.session_state["analysis_started"] = True
 
-        with st.spinner("Checking GitHub repository..."):
+            st.success(f"✓ Analysis triggered successfully (Status: {analysis_run.get('status', 'COMPLETED')})")
 
-            repository_data = get_repository(
-                owner,
-                repository
-            )
+            with st.spinner("Fetching verified repository summary and health metrics..."):
+                repo_data = client.get_repository(owner, repository)
+                repo_summary = client.get_repository_summary(owner, repository)
+                repo_kpis = client.get_repository_kpis(owner, repository)
 
-        # -----------------------------------------
-        # REPOSITORY NOT FOUND
-        # -----------------------------------------
+                st.session_state["repository_data"] = repo_data
+                st.session_state["repository_summary"] = repo_summary
+                st.session_state["repository_kpis"] = repo_kpis
 
-        if repository_data is None:
+            st.success("✓ Repository data and KPIs retrieved from backend")
 
+        except APINotFoundError as exc:
             st.session_state["analysis_started"] = False
-            st.session_state["repository_data"] = None
-            st.session_state["contributors_data"] = None
-            st.session_state["commit_activity"] = None
-            st.session_state["pull_requests"] = None
-            st.session_state["commits"] = None
-
-            st.error(
-                "❌ Repository not found. "
-                "Please check the owner and repository name."
-            )
-
-        # -----------------------------------------
-        # REPOSITORY FOUND
-        # -----------------------------------------
-
-        else:
-
-            st.session_state["analysis_started"] = True
-            st.session_state["repository_data"] = repository_data
-
-            st.success("✓ Repository verified")
-
-
-            # =========================================
-            # GET CONTRIBUTORS
-            # =========================================
-
-            with st.spinner("Collecting contributors..."):
-
-                contributors_data = get_contributors(
-                    owner,
-                    repository
-                )
-
-            st.session_state["contributors_data"] = contributors_data
-
-            if contributors_data is not None:
-
-                st.success("✓ Contributors collected")
-
-            else:
-
-                st.warning(
-                    "⚠️ Contributors could not be collected."
-                )
-
-
-            # =========================================
-            # GET COMMIT ACTIVITY
-            # =========================================
-
-            with st.spinner("Collecting commit activity..."):
-
-                commit_activity = get_commit_activity(
-                    owner,
-                    repository
-                )
-
-            st.session_state["commit_activity"] = commit_activity
-
-            if commit_activity is not None:
-
-                st.success("✓ Commit activity collected")
-
-            else:
-
-                st.warning(
-                    "⚠️ Commit activity could not be collected."
-                )
-
-
-            # =========================================
-            # GET PULL REQUESTS
-            # =========================================
-
-            with st.spinner("Collecting pull requests..."):
-
-                pull_requests = get_pull_requests(
-                    owner,
-                    repository
-                )
-
-            st.session_state["pull_requests"] = pull_requests
-
-            if pull_requests is not None:
-
-                st.success("✓ Pull requests collected")
-
-            else:
-
-                st.warning(
-                    "⚠️ Pull request data could not be collected."
-                )
-
-
-            # =========================================
-            # GET COMMITS
-            # =========================================
-
-            with st.spinner("Collecting commits..."):
-
-                commits = get_commits(
-                    owner,
-                    repository
-                )
-
-            st.session_state["commits"] = commits
-
-            if commits is not None:
-
-                st.success("✓ Commits collected")
-
-            else:
-
-                st.warning(
-                    "⚠️ Commit data could not be collected."
-                )
-
-
-            # =========================================
-            # REPOSITORY INFORMATION
-            # =========================================
-
-            st.divider()
-
-            st.subheader("Repository Information")
-
-            col1, col2, col3 = st.columns(3)
-
-            with col1:
-
-                st.metric(
-                    "⭐ Stars",
-                    repository_data.get(
-                        "stargazers_count",
-                        0
-                    )
-                )
-
-            with col2:
-
-                st.metric(
-                    "🍴 Forks",
-                    repository_data.get(
-                        "forks_count",
-                        0
-                    )
-                )
-
-            with col3:
-
-                st.metric(
-                    "🐛 Open Issues",
-                    repository_data.get(
-                        "open_issues_count",
-                        0
-                    )
-                )
-
-
-            # =========================================
-            # DESCRIPTION
-            # =========================================
-
-            st.subheader("Description")
-
-            description = repository_data.get(
-                "description"
-            )
-
-            if description:
-
-                st.write(description)
-
-            else:
-
-                st.write(
-                    "No description available."
-                )
-
-
-            # =========================================
-            # REPOSITORY DETAILS
-            # =========================================
-
-            st.subheader("Repository Details")
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-
-                st.write(
-                    "**Repository:** "
-                    f"{repository_data.get('full_name', 'N/A')}"
-                )
-
-                st.write(
-                    "**Language:** "
-                    f"{repository_data.get('language', 'N/A')}"
-                )
-
-            with col2:
-
-                st.write(
-                    "**Default Branch:** "
-                    f"{repository_data.get('default_branch', 'N/A')}"
-                )
-
-                visibility = (
-                    "Private"
-                    if repository_data.get("private")
-                    else "Public"
-                )
-
-                st.write(
-                    f"**Visibility:** {visibility}"
-                )
-
-
-            # =========================================
-            # CONTRIBUTOR SUMMARY
-            # =========================================
-
-            st.divider()
-
-            st.subheader("👥 Contributors")
-
-            if contributors_data:
-
-                st.write(
-                    "Contributor data collected successfully."
-                )
-
-                st.metric(
-                    "Total Contributors",
-                    len(contributors_data)
-                )
-
-                st.info(
-                    "Open the Contributors page to view "
-                    "detailed contributor activity and "
-                    "retention analysis."
-                )
-
-            else:
-
-                st.warning(
-                    "No contributor data available."
-                )
-
-
-            # =========================================
-            # COMMIT ACTIVITY
-            # =========================================
-
-            if commit_activity:
-
-                st.divider()
-
-                st.subheader("📈 Commit Activity")
-
-                st.write(
-                    "Weekly commit activity collected "
-                    "from the repository."
-                )
-
-                st.write(
-                    commit_activity[:5]
-                )
-
-            else:
-
-                st.warning(
-                    "No commit activity data available."
-                )
-
-
-            # =========================================
-            # PULL REQUEST ACTIVITY
-            # =========================================
-
-            if pull_requests:
-
-                st.divider()
-
-                st.subheader("🔀 Pull Request Activity")
-
-                total_prs = len(pull_requests)
-
-                open_prs = sum(
-                    1
-                    for pr in pull_requests
-                    if pr.get("state") == "open"
-                )
-
-                closed_prs = sum(
-                    1
-                    for pr in pull_requests
-                    if pr.get("state") == "closed"
-                )
-
-                col1, col2, col3 = st.columns(3)
-
-                with col1:
-
-                    st.metric(
-                        "Total Pull Requests",
-                        total_prs
-                    )
-
-                with col2:
-
-                    st.metric(
-                        "Open PRs",
-                        open_prs
-                    )
-
-                with col3:
-
-                    st.metric(
-                        "Closed PRs",
-                        closed_prs
-                    )
-
-                # -----------------------------------------
-                # PR TABLE
-                # -----------------------------------------
-
-                pr_rows = []
-
-                for pr in pull_requests:
-
-                    user_data = pr.get("user") or {}
-
-                    pr_rows.append(
-                        {
-                            "Title": pr.get(
-                                "title",
-                                "Unknown"
-                            ),
-                            "Author": user_data.get(
-                                "login",
-                                "Unknown"
-                            ),
-                            "State": pr.get(
-                                "state",
-                                "Unknown"
-                            ),
-                            "Created": pr.get(
-                                "created_at",
-                                "Unknown"
-                            ),
-                            "Merged": (
-                                "Yes"
-                                if pr.get("merged_at")
-                                else "No"
-                            )
-                        }
-                    )
-
-                st.dataframe(
-                    pr_rows,
-                    width="stretch",
-                    hide_index=True
-                )
-
-            else:
-
-                st.warning(
-                    "No pull request data available."
-                )
-
-
-            # =========================================
-            # ANALYSIS COMPLETE
-            # =========================================
-
-            st.divider()
-
-            st.subheader("✅ Analysis Ready")
-
-            st.write(
-                f"Repository **{owner}/{repository}** "
-                "has been analyzed successfully."
-            )
-
-            st.info(
-                "Your contributor retention dashboard is ready."
-            )
-
+            st.error(f"❌ {exc.message}")
+        except APIValidationError as exc:
+            st.error(f"⚠️ Validation Error: {exc.message}")
+        except APITimeoutError as exc:
+            st.error(f"⏱️ Timeout: {exc.message}")
+        except APIConnectionError as exc:
+            st.error(f"🔌 Connection Error: {exc.message}")
+        except APIRateLimitError as exc:
+            st.error(f"⏳ Rate Limit: {exc.message}")
+        except APIServerError as exc:
+            st.error(f"⚠️ Server Error: {exc.message}")
+        except Exception as exc:
+            st.error(f"An unexpected error occurred: {str(exc)}")
 
 # =========================================
-# NAVIGATION
+# RENDER VERIFIED REPOSITORY DATA
 # =========================================
 
-if st.session_state["analysis_started"]:
+repo_data = st.session_state.get("repository_data")
+summary_data = st.session_state.get("repository_summary")
+kpis_data = st.session_state.get("repository_kpis")
+analysis_run = st.session_state.get("analysis_run")
+
+if repo_data and summary_data:
+    st.divider()
+    st.subheader("Repository Information & Health")
+
+    c1, c2, c3, c4 = st.columns(4)
+    with c1:
+        st.metric("⭐ Stars", repo_data.get("stars_count", 0))
+    with c2:
+        st.metric("🍴 Forks", repo_data.get("forks_count", 0))
+    with c3:
+        st.metric("🐛 Open Issues", repo_data.get("open_issues_count", 0))
+    with c4:
+        health_score = summary_data.get("health_score", 0.0)
+        st.metric("🛡️ Health Score", f"{health_score}/100")
+
+    st.subheader("Description")
+    st.write(repo_data.get("description") or "No description provided.")
 
     st.divider()
-
-    st.subheader("📊 Continue Analysis")
-
-    st.write(
-        "Choose what you want to analyze next."
-    )
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        st.page_link(
-            "pages/contributors.py",
-            label="👥 Analyze Contributors"
-        )
-
-    with col2:
-
-        st.page_link(
-            "pages/dashboard.py",
-            label="📊 View Contributor Dashboard"
-        )
+    st.subheader("Ingestion & Analysis Status")
+    if analysis_run:
+        r1, r2, r3, r4 = st.columns(4)
+        with r1:
+            st.metric("Pull Requests", analysis_run.get("total_prs_ingested", 0))
+        with r2:
+            st.metric("Commits", analysis_run.get("total_commits_ingested", 0))
+        with r3:
+            st.metric("Issues", analysis_run.get("total_issues_ingested", 0))
+        with r4:
+            st.metric("Contributors", analysis_run.get("total_contributors_ingested", 0))
+elif not st.session_state.get("analysis_started"):
+    st.info("💡 Enter repository owner and name above to start analysis.")
