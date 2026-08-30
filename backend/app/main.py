@@ -8,7 +8,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from backend.app.api.analyses import router as analyses_router
 from backend.app.api.health import router as health_router
+from backend.app.api.repositories import router as repositories_router
 from backend.app.core.config import Settings, get_settings
 from backend.app.schemas.common import ErrorResponse, RootResponse
 
@@ -68,6 +70,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             error_code = "FORBIDDEN"
         elif exc.status_code == status.HTTP_400_BAD_REQUEST:
             error_code = "BAD_REQUEST"
+        elif exc.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+            error_code = "RATE_LIMIT_EXCEEDED"
+        elif exc.status_code == status.HTTP_504_GATEWAY_TIMEOUT:
+            error_code = "GATEWAY_TIMEOUT"
+        elif exc.status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
+            error_code = "SERVICE_UNAVAILABLE"
+        elif exc.status_code == status.HTTP_500_INTERNAL_SERVER_ERROR:
+            error_code = "INTERNAL_SERVER_ERROR"
 
         error_response = ErrorResponse(
             status="error",
@@ -128,7 +138,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     # --------------------------------------------------------------------------
-    # Root & Health Routers
+    # Root & Routers
     # --------------------------------------------------------------------------
 
     @app.get(
@@ -149,6 +159,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Mount health endpoint at top-level /health and at /api/v1/health
     app.include_router(health_router)
     app.include_router(health_router, prefix=app_settings.API_V1_STR)
+
+    # Mount Domain Routers under /api/v1
+    app.include_router(analyses_router, prefix=app_settings.API_V1_STR)
+    app.include_router(repositories_router, prefix=app_settings.API_V1_STR)
 
     return app
 
