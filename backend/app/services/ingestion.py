@@ -626,6 +626,24 @@ class IngestionService:
                 self.log_error(repo.id, analysis_run.id, "cleaning_validation", "pipeline", None, str(pipe_exc))
 
             # ------------------------------------------------------------------
+            # Stage 7: Retention Feature Engineering & KPI Engine
+            # ------------------------------------------------------------------
+            logger.info("Executing AnalyticsService for %s...", repo.full_name)
+            try:
+                from backend.app.analytics.engine import AnalyticsService
+
+                analytics = AnalyticsService(
+                    db=self.db,
+                    repository_id=repo.id,
+                    analysis_run_id=analysis_run.id,
+                )
+                analytics.run_pipeline()
+            except Exception as analytics_exc:
+                error_count += 1
+                logger.warning("Error running analytics engine: %s", analytics_exc)
+                self.log_error(repo.id, analysis_run.id, "analytics_engine", "kpis", None, str(analytics_exc))
+
+            # ------------------------------------------------------------------
             # Finalize Analysis Run Counts & Status
             # ------------------------------------------------------------------
             completed_at = utcnow()
