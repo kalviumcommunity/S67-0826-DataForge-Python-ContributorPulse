@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.app.api.analyses import router as analyses_router
+from backend.app.api.analytics import router as analytics_router
 from backend.app.api.health import router as health_router
 from backend.app.api.repositories import router as repositories_router
 from backend.app.core.config import Settings, get_settings
@@ -70,6 +71,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             error_code = "FORBIDDEN"
         elif exc.status_code == status.HTTP_400_BAD_REQUEST:
             error_code = "BAD_REQUEST"
+        elif exc.status_code == status.HTTP_422_UNPROCESSABLE_ENTITY:
+            error_code = "VALIDATION_ERROR"
         elif exc.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
             error_code = "RATE_LIMIT_EXCEEDED"
         elif exc.status_code == status.HTTP_504_GATEWAY_TIMEOUT:
@@ -163,6 +166,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Mount Domain Routers under /api/v1
     app.include_router(analyses_router, prefix=app_settings.API_V1_STR)
     app.include_router(repositories_router, prefix=app_settings.API_V1_STR)
+    app.include_router(analytics_router, prefix=app_settings.API_V1_STR)
 
     return app
 
