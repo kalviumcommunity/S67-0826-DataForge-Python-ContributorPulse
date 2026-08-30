@@ -92,14 +92,33 @@ streamlit run app.py
 1. Navigate to **🔍 Analyze Repository** via the sidebar.
 2. Enter the **Repository Owner** (e.g. `kalviumcommunity`) and **Repository Name** (e.g. `S67-0826-DataForge-Python-ContributorPulse`).
 3. Click **🚀 Analyze Repository**.
-4. View the real-time analysis status, record counts, and verified repository health metrics.
+4. View the real-time analysis status, record counts, verified repository health metrics, and download certified CSV, JSON, and print-ready HTML reports.
 
 ---
 
-## Testing & Quality Assurance
+## Intelligence Exports & Reporting
 
-Run the automated test suite with coverage:
+ContributorPulse exposes certified analytics export endpoints:
+
+- **Contributor Journeys (CSV):** `GET /api/v1/repositories/{owner}/{repo}/exports/contributors.csv`
+- **Repository KPIs (CSV):** `GET /api/v1/repositories/{owner}/{repo}/exports/kpis.csv`
+- **Intelligence Report (JSON):** `GET /api/v1/repositories/{owner}/{repo}/exports/report.json`
+- **Print-Ready Report (HTML):** `GET /api/v1/repositories/{owner}/{repo}/exports/report.html`
+- **Production Readiness Probe:** `GET /health/ready`
+
+---
+
+## Continuous Integration & Quality Assurance
+
+The project includes an automated GitHub Actions CI pipeline (`.github/workflows/ci.yml`) that validates:
+
+- **Database Container:** PostgreSQL 15 service with health check (`pg_isready`).
+- **Database Migrations:** Full forward execution of Alembic migrations (`alembic upgrade head`).
+- **Docker Compose:** Structural syntax validation (`docker compose config`).
+- **Code Quality:** Formatting and linting checks (`black`, `isort`, `flake8`).
+- **Automated Tests:** Complete backend and frontend test suite with coverage enforcement (`pytest backend/tests -v --cov=backend/app --cov-report=term-missing`).
+- **Streamlit Startup:** Full UI component and AppTest simulation validation.
 
 ```bash
 pytest backend/tests -v --cov=backend/app --cov-report=term-missing
-```
+```

@@ -9,7 +9,7 @@ import httpx
 logger = logging.getLogger("contributor_pulse.frontend_client")
 
 DEFAULT_BACKEND_URL = "http://localhost:8000"
-DEFAULT_TIMEOUT_SECONDS = 30.0
+DEFAULT_TIMEOUT_SECONDS = 10.0
 
 
 class APIClientError(Exception):
@@ -294,3 +294,36 @@ class BackendAPIClient:
             return res.get("data", res)
         except (APINotFoundError, APIValidationError):
             return None
+
+    # --------------------------------------------------------------------------
+    # Exports & Reporting
+    # --------------------------------------------------------------------------
+
+    def _request_raw(self, path: str) -> Optional[bytes]:
+        """Execute request and return raw binary/text bytes."""
+        url = f"{self.base_url}/{path.lstrip('/')}"
+        try:
+            with httpx.Client(timeout=self.timeout) as client:
+                response = client.get(url)
+                if response.status_code == 200:
+                    return response.content
+                return None
+        except Exception:
+            return None
+
+    def export_contributors_csv(self, owner: str, repo: str) -> Optional[bytes]:
+        """Fetch contributor-level CSV export."""
+        return self._request_raw(f"/api/v1/repositories/{owner}/{repo}/exports/contributors.csv")
+
+    def export_kpis_csv(self, owner: str, repo: str) -> Optional[bytes]:
+        """Fetch KPI and repository summary CSV export."""
+        return self._request_raw(f"/api/v1/repositories/{owner}/{repo}/exports/kpis.csv")
+
+    def export_report_json(self, owner: str, repo: str) -> Optional[bytes]:
+        """Fetch full intelligence JSON report."""
+        return self._request_raw(f"/api/v1/repositories/{owner}/{repo}/exports/report.json")
+
+    def export_report_html(self, owner: str, repo: str) -> Optional[bytes]:
+        """Fetch printable HTML intelligence report."""
+        return self._request_raw(f"/api/v1/repositories/{owner}/{repo}/exports/report.html")
+

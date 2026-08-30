@@ -560,3 +560,58 @@ elif selected_view == "⚖️ Repository Comparison & Monitoring":
 
             except APIClientError as exc:
                 st.error(f"⚠️ Error comparing repositories: {exc.message}")
+
+# ==============================================================================
+# Export & Download Controls Section
+# ==============================================================================
+
+if owner and repo:
+    st.divider()
+    st.subheader("📥 Export Intelligence & Data Reports")
+    st.write("Download certified analysis outputs in CSV, JSON, and print-ready HTML formats.")
+
+    col_e1, col_e2, col_e3, col_e4 = st.columns(4)
+
+    with col_e1:
+        kpi_csv = client.export_kpis_csv(owner, repo)
+        if kpi_csv:
+            st.download_button(
+                label="📊 Download KPIs (CSV)",
+                data=kpi_csv,
+                file_name=f"contributor_pulse_{owner}_{repo}_kpis.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
+    with col_e2:
+        contrib_csv = client.export_contributors_csv(owner, repo)
+        if contrib_csv:
+            st.download_button(
+                label="👥 Download Contributors (CSV)",
+                data=contrib_csv,
+                file_name=f"contributor_pulse_{owner}_{repo}_contributors.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
+
+    with col_e3:
+        report_json = client.export_report_json(owner, repo)
+        if report_json:
+            st.download_button(
+                label="📄 Download Report (JSON)",
+                data=report_json,
+                file_name=f"contributor_pulse_{owner}_{repo}_report.json",
+                mime="application/json",
+                use_container_width=True,
+            )
+
+    with col_e4:
+        report_html = client.export_report_html(owner, repo)
+        if report_html:
+            st.download_button(
+                label="🖨️ Printable Report (HTML)",
+                data=report_html,
+                file_name=f"contributor_pulse_{owner}_{repo}_report.html",
+                mime="text/html",
+                use_container_width=True,
+            )

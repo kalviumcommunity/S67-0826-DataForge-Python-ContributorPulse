@@ -1,0 +1,71 @@
+name: ContributorPulse CI
+
+on:
+  push:
+    branches: [main, feature/**, fix/**]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate-and-test:
+    name: Lint, Test & Validate
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgrespassword
+          POSTGRES_DB: contributor_pulse_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install flake8 black isort
+
+      - name: Run Import & Formatting Check
+        run: |
+          black --check --diff backend/ pages/ app.py api_client.py || true
+          isort --check-only --diff backend/ pages/ app.py api_client.py || true
+          flake8 backend/ pages/ app.py api_client.py --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Validate Docker Compose Configuration
+        run: |
+          docker compose config
+
+      - name: Run Database Migrations (Alembic)
+        env:
+          DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/contributor_pulse_test
+          GITHUB_TOKEN: ghp_dummy_ci_token_for_tests_only
+        run: |
+          alembic upgrade head
+
+      - name: Run Complete Test Suite with Coverage
+        env:
+          DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/contributor_pulse_test
+          GITHUB_TOKEN: ghp_dummy_ci_token_for_tests_only
+        run: |
+          pytest backend/tests -v --cov=backend/app --cov-report=term-missing
+
+      - name: Run Streamlit Startup & Smoke Tests
+        run: |
+          python -c "import streamlit; import pages.dashboard; import pages.contributors; import pages.repository; import app; print('Streamlit frontend components imported and validated.')"
