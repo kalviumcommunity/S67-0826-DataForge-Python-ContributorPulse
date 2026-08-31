@@ -13,7 +13,7 @@ jobs:
 
     services:
       postgres:
-        image: postgres:15-alpine
+        image: postgres:16-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgrespassword
@@ -44,9 +44,9 @@ jobs:
 
       - name: Run Import & Formatting Check
         run: |
-          black --check --diff backend/ pages/ app.py api_client.py || true
-          isort --check-only --diff backend/ pages/ app.py api_client.py || true
-          flake8 backend/ pages/ app.py api_client.py --count --select=E9,F63,F7,F82 --show-source --statistics
+          black --check --diff backend/ pages/ app.py api_client.py
+          isort --check-only --diff backend/ pages/ app.py api_client.py
+          flake8 backend/ pages/ app.py api_client.py
 
       - name: Validate Docker Compose Configuration
         run: |
@@ -55,14 +55,14 @@ jobs:
       - name: Run Database Migrations (Alembic)
         env:
           DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/contributor_pulse_test
-          GITHUB_TOKEN: ghp_dummy_ci_token_for_tests_only
+          GITHUB_TOKEN: ci-placeholder-test-token
         run: |
           alembic upgrade head
 
       - name: Run Complete Test Suite with Coverage
         env:
           DATABASE_URL: postgresql://postgres:postgrespassword@localhost:5432/contributor_pulse_test
-          GITHUB_TOKEN: ghp_dummy_ci_token_for_tests_only
+          GITHUB_TOKEN: ci-placeholder-test-token
         run: |
           pytest backend/tests -v --cov=backend/app --cov-report=term-missing
 

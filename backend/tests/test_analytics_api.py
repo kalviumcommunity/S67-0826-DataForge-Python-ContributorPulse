@@ -1,11 +1,12 @@
 """Deterministic integration tests for FastAPI analytics and contributor endpoints."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
+
 import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.app.analytics.engine import AnalyticsService
@@ -14,7 +15,6 @@ from backend.app.db.session import get_db
 from backend.app.main import create_app
 from backend.app.models.base import Base, utcnow
 from backend.app.models.comment import Comment
-from backend.app.models.contributor_feature import ContributorFeature
 from backend.app.models.pull_request import PullRequest
 from backend.app.models.repository import Repository
 from backend.app.models.review import Review
@@ -143,7 +143,7 @@ def analytics_test_client():
     test_settings = Settings(
         ENVIRONMENT="testing",
         DATABASE_URL="sqlite:///:memory:",
-        GITHUB_TOKEN="ghp_test_token_1234567890",
+        GITHUB_TOKEN="test_token_1234567890",
     )
     app = create_app(settings=test_settings)
 
@@ -164,6 +164,7 @@ def analytics_test_client():
 # ------------------------------------------------------------------------------
 # 1. Summary & KPI Tests
 # ------------------------------------------------------------------------------
+
 
 def test_get_repository_summary_success(analytics_test_client: TestClient) -> None:
     """Test GET /api/v1/repositories/{owner}/{repo}/summary returns valid overview."""
@@ -202,6 +203,7 @@ def test_get_unknown_repository_404(analytics_test_client: TestClient) -> None:
 # 2. Contributor List & Filter Tests
 # ------------------------------------------------------------------------------
 
+
 def test_get_repository_contributors_paginated(analytics_test_client: TestClient) -> None:
     """Test GET /api/v1/repositories/{owner}/{repo}/contributors pagination & metadata."""
     resp = analytics_test_client.get(
@@ -230,6 +232,7 @@ def test_get_repository_contributors_filtered(analytics_test_client: TestClient)
 # ------------------------------------------------------------------------------
 # 3. Funnel, Distribution, Timeline & Stats
 # ------------------------------------------------------------------------------
+
 
 def test_get_retention_funnel(analytics_test_client: TestClient) -> None:
     """Test GET /api/v1/repositories/{owner}/{repo}/funnel returns structured stages."""
@@ -276,6 +279,7 @@ def test_get_merge_stats(analytics_test_client: TestClient) -> None:
 # 4. Correlations, High-Risk & Comparisons
 # ------------------------------------------------------------------------------
 
+
 def test_get_correlation_data(analytics_test_client: TestClient) -> None:
     """Test GET /api/v1/repositories/{owner}/{repo}/correlations."""
     resp = analytics_test_client.get("/api/v1/repositories/pulse-org/pulse-api/correlations")
@@ -299,9 +303,7 @@ def test_get_high_risk_contributors(analytics_test_client: TestClient) -> None:
 
 def test_compare_repositories_success(analytics_test_client: TestClient) -> None:
     """Test GET /api/v1/repositories/compare with valid repository list."""
-    resp = analytics_test_client.get(
-        "/api/v1/repositories/compare?repos=pulse-org/pulse-api"
-    )
+    resp = analytics_test_client.get("/api/v1/repositories/compare?repos=pulse-org/pulse-api")
     assert resp.status_code == status.HTTP_200_OK
     data = resp.json()["data"]
     assert len(data["repositories"]) == 1

@@ -4,6 +4,7 @@ import logging
 import os
 import re
 from typing import Any, Dict, List, Optional
+
 import httpx
 
 logger = logging.getLogger("contributor_pulse.frontend_client")
@@ -15,7 +16,9 @@ DEFAULT_TIMEOUT_SECONDS = 10.0
 class APIClientError(Exception):
     """Base exception for frontend API client operations."""
 
-    def __init__(self, message: str, status_code: Optional[int] = None, details: Optional[Any] = None) -> None:
+    def __init__(
+        self, message: str, status_code: Optional[int] = None, details: Optional[Any] = None
+    ) -> None:
         super().__init__(message)
         self.message = message
         self.status_code = status_code
@@ -52,6 +55,7 @@ def get_backend_url() -> str:
     if not url:
         try:
             import streamlit as st
+
             if hasattr(st, "secrets") and "BACKEND_URL" in st.secrets:
                 url = str(st.secrets["BACKEND_URL"])
         except Exception:
@@ -63,10 +67,33 @@ def sanitize_error_message(msg: str) -> str:
     """Sanitize error messages to prevent accidental leakage of tokens or connection strings."""
     if not msg:
         return "An unknown error occurred."
-    # Strip tokens (ghp_, github_pat_, etc)
+    # Strip tokens (ghp_, github_pat_, etc) and connection strings
     sanitized = re.sub(r"gh[pousr]_[A-Za-z0-9_]{16,}", "[REDACTED_TOKEN]", msg)
+    sanitized = re.sub(r"github_pat_[A-Za-z0-9_]{22,}", "[REDACTED_TOKEN]", sanitized)
     sanitized = re.sub(r"postgres(ql)?://[^@]+@[^/]+/[^ \n]+", "[REDACTED_DATABASE_URL]", sanitized)
     return sanitized
+
+
+def normalize_period(period: Optional[str]) -> Optional[str]:
+    """
+    Normalize user-facing or programmatic period representations to canonical API strings.
+
+    Supported: '30d', '90d', '180d', '365d', 'all'.
+    """
+    if not period:
+        return None
+    p = period.strip().lower()
+    if p in ("all", "all ingested history", "all time", "none", "*"):
+        return "all"
+    if p in ("30d", "last 30 days", "30 days", "30"):
+        return "30d"
+    if p in ("90d", "last 90 days", "90 days", "90"):
+        return "90d"
+    if p in ("180d", "last 180 days", "180 days", "180"):
+        return "180d"
+    if p in ("365d", "last 365 days", "365 days", "365", "1y", "1 year"):
+        return "365d"
+    return p
 
 
 class BackendAPIClient:
@@ -86,46 +113,47 @@ class BackendAPIClient:
         path: str,
         params: Optional[Dict[str, Any]] = None,
         json: Optional[Dict[str, Any]] = None,
+        timeout: Optional[float] = None,
     ) -> Dict[str, Any]:
         """Execute HTTP request with robust error handling and timeout safety."""
         url = f"{self.base_url}/{path.lstrip('/')}"
+        req_timeout = timeout or self.timeout
         try:
-            with httpx.Client(timeout=self.timeout) as client:
+            with httpx.Client(timeout=req_timeout) as client:
                 response = client.request(method, url, params=params, json=json)
         except httpx.TimeoutException as exc:
             logger.warning("Request timeout calling %s: %s", url, exc)
             raise APITimeoutError(
-                f"The backend service timed out while processing your request. Please try again later."
+                "The backend service timed out while processing your request. Please try again later."
             ) from exc
         except httpx.NetworkError as exc:
-            logger.warning("Network connection error calling %s: %s", url, exc)
+            logger.warning("Network error calling %s: %s", url, exc)
             raise APIConnectionError(
-                f"Cannot connect to the backend service at {self.base_url}. Please ensure the FastAPI server is running."
+                f"Cannot connect: Could not connect to the backend at {self.base_url}. Please ensure the server is running."
             ) from exc
         except Exception as exc:
-            logger.exception("Unexpected client error calling %s: %s", url, exc)
+            logger.error("Unexpected error during API request: %s", exc)
             raise APIClientError(sanitize_error_message(str(exc))) from exc
 
-        # Handle specific HTTP error status codes
         if response.status_code == 404:
-            err_detail = self._extract_error_detail(response, f"Resource not found at {path}.")
-            raise APINotFoundError(err_detail, status_code=404)
-
-        if response.status_code == 422:
-            err_detail = self._extract_error_detail(response, "Validation failed for the requested parameters.")
-            raise APIValidationError(err_detail, status_code=422)
-
-        if response.status_code == 429:
-            err_detail = self._extract_error_detail(response, "Rate limit exceeded. Please wait before retrying.")
-            raise APIRateLimitError(err_detail, status_code=429)
-
-        if response.status_code >= 500:
-            err_detail = self._extract_error_detail(response, "A backend server error occurred.")
-            raise APIServerError(err_detail, status_code=response.status_code)
-
-        if not (200 <= response.status_code < 300):
-            err_detail = self._extract_error_detail(response, f"HTTP Error {response.status_code}")
-            raise APIClientError(err_detail, status_code=response.status_code)
+            detail = self._extract_error_detail(response, f"Resource not found at {path}")
+            raise APINotFoundError(detail, status_code=404)
+        elif response.status_code == 422:
+            detail = self._extract_error_detail(response, "Request validation failed.")
+            raise APIValidationError(detail, status_code=422)
+        elif response.status_code == 429:
+            detail = self._extract_error_detail(
+                response, "Rate limit exceeded. Please try again later."
+            )
+            raise APIRateLimitError(detail, status_code=429)
+        elif response.status_code >= 500:
+            detail = self._extract_error_detail(response, "Backend internal server error.")
+            raise APIServerError(detail, status_code=response.status_code)
+        elif response.status_code >= 400:
+            detail = self._extract_error_detail(
+                response, f"Request failed with status {response.status_code}"
+            )
+            raise APIClientError(detail, status_code=response.status_code)
 
         try:
             return response.json()
@@ -164,13 +192,13 @@ class BackendAPIClient:
         self,
         owner: str,
         repo: str,
-        max_pages: Optional[int] = None,
+        max_pages: Optional[int] = 2,
     ) -> Dict[str, Any]:
-        """Trigger repository ingestion and analysis run."""
+        """Trigger repository ingestion and analysis run with extended timeout."""
         payload = {"owner": owner.strip(), "repo": repo.strip()}
         if max_pages:
             payload["max_pages"] = max_pages
-        res = self._request("POST", "/api/v1/analyses", json=payload)
+        res = self._request("POST", "/api/v1/analyses", json=payload, timeout=120.0)
         return res.get("data", res)
 
     def get_analysis_status(self, analysis_id: str) -> Dict[str, Any]:
@@ -187,21 +215,35 @@ class BackendAPIClient:
             return None
 
     # --------------------------------------------------------------------------
-    # Analytics & KPIs
+    # Analytics & KPIs with Time-Period Support
     # --------------------------------------------------------------------------
 
-    def get_repository_summary(self, owner: str, repo: str) -> Optional[Dict[str, Any]]:
-        """Fetch repository overview metrics and health score."""
+    def get_repository_summary(
+        self, owner: str, repo: str, period: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch repository overview metrics and health score filtered by period."""
+        params = {}
+        norm_period = normalize_period(period)
+        if norm_period:
+            params["period"] = norm_period
         try:
-            res = self._request("GET", f"/api/v1/repositories/{owner}/{repo}/summary")
+            res = self._request(
+                "GET", f"/api/v1/repositories/{owner}/{repo}/summary", params=params
+            )
             return res.get("data", res)
         except APINotFoundError:
             return None
 
-    def get_repository_kpis(self, owner: str, repo: str) -> Optional[Dict[str, Any]]:
-        """Fetch complete repository KPIs with sample sizes and units."""
+    def get_repository_kpis(
+        self, owner: str, repo: str, period: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch complete repository KPIs with sample sizes and units filtered by period."""
+        params = {}
+        norm_period = normalize_period(period)
+        if norm_period:
+            params["period"] = norm_period
         try:
-            res = self._request("GET", f"/api/v1/repositories/{owner}/{repo}/kpis")
+            res = self._request("GET", f"/api/v1/repositories/{owner}/{repo}/kpis", params=params)
             return res.get("data", res)
         except APINotFoundError:
             return None
@@ -217,8 +259,9 @@ class BackendAPIClient:
         churn_risk_level: Optional[str] = None,
         is_active_maintainer: Optional[bool] = None,
         search: Optional[str] = None,
+        period: Optional[str] = None,
     ) -> Optional[Dict[str, Any]]:
-        """Fetch paginated contributor journey records."""
+        """Fetch paginated contributor journey records filtered by period."""
         params: Dict[str, Any] = {"page": page, "per_page": per_page}
         if experience_level:
             params["experience_level"] = experience_level
@@ -230,57 +273,108 @@ class BackendAPIClient:
             params["is_active_maintainer"] = is_active_maintainer
         if search:
             params["search"] = search
+        norm_period = normalize_period(period)
+        if norm_period:
+            params["period"] = norm_period
 
         try:
-            res = self._request("GET", f"/api/v1/repositories/{owner}/{repo}/contributors", params=params)
+            res = self._request(
+                "GET", f"/api/v1/repositories/{owner}/{repo}/contributors", params=params
+            )
             return res.get("data", res)
         except APINotFoundError:
             return None
 
-    def get_retention_funnel(self, owner: str, repo: str) -> Optional[Dict[str, Any]]:
-        """Fetch retention funnel progression data."""
+    def get_retention_funnel(
+        self, owner: str, repo: str, period: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch retention funnel progression data filtered by period."""
+        params = {}
+        norm_period = normalize_period(period)
+        if norm_period:
+            params["period"] = norm_period
         try:
-            res = self._request("GET", f"/api/v1/repositories/{owner}/{repo}/funnel")
+            res = self._request("GET", f"/api/v1/repositories/{owner}/{repo}/funnel", params=params)
             return res.get("data", res)
         except APINotFoundError:
             return None
 
-    def get_response_distribution(self, owner: str, repo: str) -> Optional[Dict[str, Any]]:
-        """Fetch response-time bracket distribution."""
+    def get_response_distribution(
+        self, owner: str, repo: str, period: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch response-time bracket distribution filtered by period."""
+        params = {}
+        norm_period = normalize_period(period)
+        if norm_period:
+            params["period"] = norm_period
         try:
-            res = self._request("GET", f"/api/v1/repositories/{owner}/{repo}/response-distribution")
+            res = self._request(
+                "GET", f"/api/v1/repositories/{owner}/{repo}/response-distribution", params=params
+            )
             return res.get("data", res)
         except APINotFoundError:
             return None
 
-    def get_review_timeline(self, owner: str, repo: str) -> Optional[Dict[str, Any]]:
-        """Fetch chronological review and response speed timeline."""
+    def get_review_timeline(
+        self, owner: str, repo: str, period: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch chronological review and response speed timeline filtered by period."""
+        params = {}
+        norm_period = normalize_period(period)
+        if norm_period:
+            params["period"] = norm_period
         try:
-            res = self._request("GET", f"/api/v1/repositories/{owner}/{repo}/review-timeline")
+            res = self._request(
+                "GET", f"/api/v1/repositories/{owner}/{repo}/review-timeline", params=params
+            )
             return res.get("data", res)
         except APINotFoundError:
             return None
 
-    def get_merge_stats(self, owner: str, repo: str) -> Optional[Dict[str, Any]]:
-        """Fetch PR merge outcomes and duration stats."""
+    def get_merge_stats(
+        self, owner: str, repo: str, period: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch PR merge outcomes and duration stats filtered by period."""
+        params = {}
+        norm_period = normalize_period(period)
+        if norm_period:
+            params["period"] = norm_period
         try:
-            res = self._request("GET", f"/api/v1/repositories/{owner}/{repo}/merge-stats")
+            res = self._request(
+                "GET", f"/api/v1/repositories/{owner}/{repo}/merge-stats", params=params
+            )
             return res.get("data", res)
         except APINotFoundError:
             return None
 
-    def get_correlation_data(self, owner: str, repo: str) -> Optional[Dict[str, Any]]:
-        """Fetch correlation-ready feature data."""
+    def get_correlation_data(
+        self, owner: str, repo: str, period: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch correlation-ready feature data filtered by period."""
+        params = {}
+        norm_period = normalize_period(period)
+        if norm_period:
+            params["period"] = norm_period
         try:
-            res = self._request("GET", f"/api/v1/repositories/{owner}/{repo}/correlations")
+            res = self._request(
+                "GET", f"/api/v1/repositories/{owner}/{repo}/correlations", params=params
+            )
             return res.get("data", res)
         except APINotFoundError:
             return None
 
-    def get_high_risk_contributors(self, owner: str, repo: str) -> Optional[Dict[str, Any]]:
-        """Fetch high churn risk contributors."""
+    def get_high_risk_contributors(
+        self, owner: str, repo: str, period: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """Fetch high churn risk contributors filtered by period."""
+        params = {}
+        norm_period = normalize_period(period)
+        if norm_period:
+            params["period"] = norm_period
         try:
-            res = self._request("GET", f"/api/v1/repositories/{owner}/{repo}/high-risk-contributors")
+            res = self._request(
+                "GET", f"/api/v1/repositories/{owner}/{repo}/high-risk-contributors", params=params
+            )
             return res.get("data", res)
         except APINotFoundError:
             return None
@@ -290,40 +384,73 @@ class BackendAPIClient:
         if not repos:
             return None
         try:
-            res = self._request("GET", "/api/v1/repositories/compare", params={"repos": ",".join(repos)})
+            res = self._request(
+                "GET", "/api/v1/repositories/compare", params={"repos": ",".join(repos)}
+            )
             return res.get("data", res)
         except (APINotFoundError, APIValidationError):
             return None
 
     # --------------------------------------------------------------------------
-    # Exports & Reporting
+    # Exports & Reporting with Time-Period Support
     # --------------------------------------------------------------------------
 
-    def _request_raw(self, path: str) -> Optional[bytes]:
+    def _request_raw(self, path: str, params: Optional[Dict[str, Any]] = None) -> Optional[bytes]:
         """Execute request and return raw binary/text bytes."""
         url = f"{self.base_url}/{path.lstrip('/')}"
         try:
             with httpx.Client(timeout=self.timeout) as client:
-                response = client.get(url)
+                response = client.get(url, params=params)
                 if response.status_code == 200:
                     return response.content
                 return None
         except Exception:
             return None
 
-    def export_contributors_csv(self, owner: str, repo: str) -> Optional[bytes]:
-        """Fetch contributor-level CSV export."""
-        return self._request_raw(f"/api/v1/repositories/{owner}/{repo}/exports/contributors.csv")
+    def export_contributors_csv(
+        self, owner: str, repo: str, period: Optional[str] = None
+    ) -> Optional[bytes]:
+        """Fetch contributor-level CSV export filtered by period."""
+        params = {}
+        norm_period = normalize_period(period)
+        if norm_period:
+            params["period"] = norm_period
+        return self._request_raw(
+            f"/api/v1/repositories/{owner}/{repo}/exports/contributors.csv", params=params
+        )
 
-    def export_kpis_csv(self, owner: str, repo: str) -> Optional[bytes]:
-        """Fetch KPI and repository summary CSV export."""
-        return self._request_raw(f"/api/v1/repositories/{owner}/{repo}/exports/kpis.csv")
+    def export_kpis_csv(
+        self, owner: str, repo: str, period: Optional[str] = None
+    ) -> Optional[bytes]:
+        """Fetch KPI and repository summary CSV export filtered by period."""
+        params = {}
+        norm_period = normalize_period(period)
+        if norm_period:
+            params["period"] = norm_period
+        return self._request_raw(
+            f"/api/v1/repositories/{owner}/{repo}/exports/kpis.csv", params=params
+        )
 
-    def export_report_json(self, owner: str, repo: str) -> Optional[bytes]:
-        """Fetch full intelligence JSON report."""
-        return self._request_raw(f"/api/v1/repositories/{owner}/{repo}/exports/report.json")
+    def export_report_json(
+        self, owner: str, repo: str, period: Optional[str] = None
+    ) -> Optional[bytes]:
+        """Fetch full intelligence JSON report filtered by period."""
+        params = {}
+        norm_period = normalize_period(period)
+        if norm_period:
+            params["period"] = norm_period
+        return self._request_raw(
+            f"/api/v1/repositories/{owner}/{repo}/exports/report.json", params=params
+        )
 
-    def export_report_html(self, owner: str, repo: str) -> Optional[bytes]:
-        """Fetch printable HTML intelligence report."""
-        return self._request_raw(f"/api/v1/repositories/{owner}/{repo}/exports/report.html")
-
+    def export_report_html(
+        self, owner: str, repo: str, period: Optional[str] = None
+    ) -> Optional[bytes]:
+        """Fetch printable HTML intelligence report filtered by period."""
+        params = {}
+        norm_period = normalize_period(period)
+        if norm_period:
+            params["period"] = norm_period
+        return self._request_raw(
+            f"/api/v1/repositories/{owner}/{repo}/exports/report.html", params=params
+        )

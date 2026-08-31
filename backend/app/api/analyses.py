@@ -31,9 +31,12 @@ def build_analysis_summary(run: AnalysisRun, db: Session) -> AnalysisSummary:
     repo = db.scalars(select(Repository).where(Repository.id == run.repository_id)).first()
     repo_name = repo.full_name if repo else None
 
-    error_count = db.scalar(
-        select(func.count(IngestionError.id)).where(IngestionError.analysis_run_id == run.id)
-    ) or 0
+    error_count = (
+        db.scalar(
+            select(func.count(IngestionError.id)).where(IngestionError.analysis_run_id == run.id)
+        )
+        or 0
+    )
 
     return AnalysisSummary(
         run_id=run.run_id,

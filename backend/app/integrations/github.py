@@ -3,6 +3,7 @@
 import logging
 import time
 from typing import Any, Dict, List, Optional
+
 import httpx
 from fastapi import Depends
 
@@ -64,7 +65,9 @@ class GitHubClient:
 
         # 401 Unauthorized
         if status_code == 401:
-            raise GitHubAuthenticationError("GitHub authentication failed: Invalid or expired token.", status_code, body)
+            raise GitHubAuthenticationError(
+                "GitHub authentication failed: Invalid or expired token.", status_code, body
+            )
 
         # 403 Forbidden / Rate limit
         if status_code == 403:
@@ -72,7 +75,11 @@ class GitHubClient:
             reset_ts = response.headers.get("x-ratelimit-reset")
             retry_after = response.headers.get("retry-after")
 
-            if remaining == "0" or "rate limit" in str(message).lower() or "secondary rate limit" in str(message).lower():
+            if (
+                remaining == "0"
+                or "rate limit" in str(message).lower()
+                or "secondary rate limit" in str(message).lower()
+            ):
                 reset_int = int(reset_ts) if reset_ts and reset_ts.isdigit() else None
                 retry_int = int(retry_after) if retry_after and retry_after.isdigit() else None
                 raise GitHubRateLimitError(
@@ -171,7 +178,9 @@ class GitHubClient:
                     )
                     time.sleep(sleep_time)
                     continue
-                raise GitHubTimeoutError(f"GitHub request timed out or network failed after {self.max_retries} retries: {exc}") from exc
+                raise GitHubTimeoutError(
+                    f"GitHub request timed out or network failed after {self.max_retries} retries: {exc}"
+                ) from exc
 
         if last_exception:
             raise GitHubAPIError(f"GitHub request failed: {last_exception}") from last_exception
@@ -333,7 +342,9 @@ class GitHubClient:
 
     def __repr__(self) -> str:
         masked_tok = "****" if self.token else "None"
-        return f"GitHubClient(base_url='{self.base_url}', token={masked_tok}, timeout={self.timeout})"
+        return (
+            f"GitHubClient(base_url='{self.base_url}', token={masked_tok}, timeout={self.timeout})"
+        )
 
 
 def get_github_client(

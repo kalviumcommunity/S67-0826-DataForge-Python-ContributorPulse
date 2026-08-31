@@ -2,8 +2,8 @@
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
+
 from sqlalchemy import (
-    BigInteger,
     Boolean,
     DateTime,
     Float,
@@ -31,7 +31,9 @@ class ContributorFeature(Base):
 
     __tablename__ = "contributor_features"
     __table_args__ = (
-        UniqueConstraint("repository_id", "contributor_id", name="uq_contributor_features_repo_contributor"),
+        UniqueConstraint(
+            "repository_id", "contributor_id", name="uq_contributor_features_repo_contributor"
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
@@ -84,19 +86,15 @@ class ContributorFeature(Base):
     experience_level: Mapped[str] = mapped_column(
         String(50), default="first_time", nullable=False
     )  # first_time, repeat, core
-    is_active_maintainer: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False
-    )
-    has_weekend_contributions: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False
-    )
-    churn_risk_score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)  # 0.0 to 1.0
+    is_active_maintainer: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    has_weekend_contributions: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    churn_risk_score: Mapped[float] = mapped_column(
+        Float, default=0.0, nullable=False
+    )  # 0.0 to 1.0
     churn_risk_level: Mapped[str] = mapped_column(
         String(50), default="low", nullable=False
     )  # low, medium, high
-    risk_reason: Mapped[Optional[str]] = mapped_column(
-        String(255), nullable=True
-    )
+    risk_reason: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
 
     last_active_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
@@ -106,7 +104,9 @@ class ContributorFeature(Base):
     )
 
     # Relationships
-    repository: Mapped["Repository"] = relationship("Repository", back_populates="contributor_features")
+    repository: Mapped["Repository"] = relationship(
+        "Repository", back_populates="contributor_features"
+    )
     contributor: Mapped["User"] = relationship("User", back_populates="contributor_features")
     analysis_run: Mapped[Optional["AnalysisRun"]] = relationship(
         "AnalysisRun", back_populates="contributor_features"

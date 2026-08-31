@@ -2,7 +2,8 @@
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
-from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text
+
+from sqlalchemy import DateTime, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.models.base import Base, BigIntFK, BigIntPK, utcnow

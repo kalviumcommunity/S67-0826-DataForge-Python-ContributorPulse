@@ -1,9 +1,10 @@
 """Retention feature engineering and repository KPI calculation engine."""
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
-from sqlalchemy import func, select
+
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.models.base import utcnow
@@ -12,7 +13,6 @@ from backend.app.models.commit import Commit
 from backend.app.models.contributor_feature import ContributorFeature
 from backend.app.models.issue import Issue
 from backend.app.models.pull_request import PullRequest
-from backend.app.models.repository import Repository
 from backend.app.models.review import Review
 from backend.app.models.user import User
 from backend.app.processing.normalizers import normalize_timestamp
@@ -28,7 +28,9 @@ def _as_utc(dt: Optional[datetime]) -> Optional[datetime]:
 class ContributorFeatureEngine:
     """Calculates onboarding journeys, retention flags, and transparent churn risk signals."""
 
-    def __init__(self, db: Session, repository_id: int, analysis_run_id: Optional[int] = None) -> None:
+    def __init__(
+        self, db: Session, repository_id: int, analysis_run_id: Optional[int] = None
+    ) -> None:
         self.db = db
         self.repository_id = repository_id
         self.analysis_run_id = analysis_run_id
@@ -155,7 +157,11 @@ class ContributorFeatureEngine:
             ).all()
 
             response_candidates: List[datetime] = []
-            if first_pr_reviews and first_pr_reviews[0].contributor_id != contributor.id and first_pr_reviews[0].submitted_at:
+            if (
+                first_pr_reviews
+                and first_pr_reviews[0].contributor_id != contributor.id
+                and first_pr_reviews[0].submitted_at
+            ):
                 r_utc = _as_utc(first_pr_reviews[0].submitted_at)
                 if r_utc:
                     response_candidates.append(r_utc)
@@ -203,7 +209,7 @@ class ContributorFeatureEngine:
             retention_status = "churned"
 
         # 7. Experience Level
-        is_first_time = (total_prs <= 1 and total_commits <= 1)
+        is_first_time = total_prs <= 1 and total_commits <= 1
         if total_contributions >= 10:
             experience_level = "core"
         elif total_contributions >= 2:
@@ -230,7 +236,11 @@ class ContributorFeatureEngine:
             if first_response_time_seconds and first_response_time_seconds > 172800:
                 risk_score += 0.30
                 risk_reasons.append("Slow initial maintainer response (>48h)")
-            elif first_response_time_seconds is None and first_pr_created_utc and (now_dt - first_pr_created_utc).days > 3:
+            elif (
+                first_response_time_seconds is None
+                and first_pr_created_utc
+                and (now_dt - first_pr_created_utc).days > 3
+            ):
                 risk_score += 0.35
                 risk_reasons.append("No response received on initial pull request")
 
@@ -240,12 +250,20 @@ class ContributorFeatureEngine:
                 risk_reasons.append("Initial pull request closed unmerged")
 
             # Penalty if no code reviews received
-            if first_pr_review_duration_seconds is None and first_pr_created_utc and (now_dt - first_pr_created_utc).days > 7:
+            if (
+                first_pr_review_duration_seconds is None
+                and first_pr_created_utc
+                and (now_dt - first_pr_created_utc).days > 7
+            ):
                 risk_score += 0.20
                 risk_reasons.append("No code review feedback on initial PR")
 
         # Penalty if contributor has only 1 contribution and inactive for > 60 days
-        if total_contributions == 1 and first_contribution_at and (now_dt - first_contribution_at).days > 60:
+        if (
+            total_contributions == 1
+            and first_contribution_at
+            and (now_dt - first_contribution_at).days > 60
+        ):
             risk_score += 0.25
             risk_reasons.append("No follow-up activity for >60 days")
 
@@ -340,7 +358,8 @@ class ContributorFeatureEngine:
     def calculate_all(self) -> List[ContributorFeature]:
         """Calculate and persist features for all contributors in this repository."""
         pr_users = select(PullRequest.contributor_id).where(
-            (PullRequest.repository_id == self.repository_id) & (PullRequest.contributor_id.is_not(None))
+            (PullRequest.repository_id == self.repository_id)
+            & (PullRequest.contributor_id.is_not(None))
         )
         commit_users = select(Commit.contributor_id).where(
             (Commit.repository_id == self.repository_id) & (Commit.contributor_id.is_not(None))
@@ -369,60 +388,105 @@ class ContributorFeatureEngine:
         return results
 
 
+def parse_period_days(period: Optional[str]) -> Optional[int]:
+    """Parse period string into integer day count (e.g. '30d' -> 30, 'all' -> None)."""
+    if not period:
+        return None
+    p = str(period).strip().lower()
+    if p in ("30d", "last 30 days", "30"):
+        return 30
+    if p in ("90d", "last 90 days", "90"):
+        return 90
+    if p in ("180d", "last 180 days", "180"):
+        return 180
+    if p in ("365d", "last 365 days", "365", "1y", "1 year"):
+        return 365
+    return None
+
+
 class RepositoryKPIEngine:
-    """Calculates repository-level KPIs and transparent health scores."""
+    """
+    Calculates repository-level KPIs and transparent health scores.
+
+    Period Filtering Semantics:
+    - Contributor-level metrics (retention, contributor growth, churn risk, response/review speed samples)
+      use contributor first_contribution_at / last_active_at timestamps to select the active cohort.
+    - Event-level metrics (PR merge rates, counts) filter PullRequest records created within the trailing window.
+    - When period is None or 'all', calculations evaluate full repository history.
+
+    Retention Denominator & Observation Window Policy:
+    - 30-Day Retention Denominator: Contributors whose first contribution was at least 30 days ago
+      (so that a full 30-day return window has elapsed). If no contributors meet this threshold,
+      the rate is returned as None (with sample_size=0) to distinguish insufficient data from 0% retention.
+    - 90-Day Retention Denominator: Contributors whose first contribution was at least 90 days ago.
+      If none meet the threshold, returns None with sample_size=0.
+    """
 
     def __init__(self, db: Session, repository_id: int) -> None:
         self.db = db
         self.repository_id = repository_id
 
-    def calculate_kpis(self) -> Dict[str, Any]:
+    def calculate_kpis(self, period: Optional[str] = None) -> Dict[str, Any]:
         """
-        Compute repository-level KPIs based on persisted clean data and contributor features.
+        Compute repository-level KPIs based on persisted clean data and contributor features,
+        optionally scoped to a trailing time period (30d, 90d, 180d, 365d, all).
 
         Returns:
             Dict containing retention rates, merge rates, average review/response times,
             growth, high-risk counts, and composite health score.
         """
-        # Fetch contributor features for this repo
-        features = self.db.scalars(
+        now_dt = utcnow()
+        days_limit = parse_period_days(period)
+        cutoff_dt = (now_dt - timedelta(days=days_limit)) if days_limit else None
+
+        # Fetch contributor features for this repository
+        all_features = self.db.scalars(
             select(ContributorFeature).where(ContributorFeature.repository_id == self.repository_id)
         ).all()
 
+        # Filter features by time period if specified
+        if cutoff_dt:
+            features = [
+                f
+                for f in all_features
+                if (f.first_contribution_at and _as_utc(f.first_contribution_at) >= cutoff_dt)
+                or (f.last_active_at and _as_utc(f.last_active_at) >= cutoff_dt)
+            ]
+        else:
+            features = all_features
+
         total_contributors = len(features)
-        now_dt = utcnow()
 
         # 1. Retention Rate (30d and 90d)
-        # Only evaluate contributors whose first contribution was >= 30d (or >= 90d) ago
+        # Denominator: only contributors whose first contribution occurred >= 30d (or >= 90d) ago
         eligible_30d = [
-            f for f in features if f.first_contribution_at and (now_dt - _as_utc(f.first_contribution_at)).days >= 30
+            f
+            for f in features
+            if f.first_contribution_at and (now_dt - _as_utc(f.first_contribution_at)).days >= 30
         ]
         retained_30d_count = sum(1 for f in eligible_30d if f.is_retained_30d)
         retention_rate_30d = (
-            round((retained_30d_count / len(eligible_30d)) * 100.0, 1)
-            if eligible_30d
-            else None
+            round((retained_30d_count / len(eligible_30d)) * 100.0, 1) if eligible_30d else None
         )
 
         eligible_90d = [
-            f for f in features if f.first_contribution_at and (now_dt - _as_utc(f.first_contribution_at)).days >= 90
+            f
+            for f in features
+            if f.first_contribution_at and (now_dt - _as_utc(f.first_contribution_at)).days >= 90
         ]
         retained_90d_count = sum(1 for f in eligible_90d if f.is_retained_90d)
         retention_rate_90d = (
-            round((retained_90d_count / len(eligible_90d)) * 100.0, 1)
-            if eligible_90d
-            else None
+            round((retained_90d_count / len(eligible_90d)) * 100.0, 1) if eligible_90d else None
         )
 
-        # 2. Merge Rate
-        total_prs = self.db.scalar(
-            select(func.count(PullRequest.id)).where(PullRequest.repository_id == self.repository_id)
-        ) or 0
-        merged_prs = self.db.scalar(
-            select(func.count(PullRequest.id)).where(
-                (PullRequest.repository_id == self.repository_id) & (PullRequest.is_merged.is_(True))
-            )
-        ) or 0
+        # 2. Merge Rate (scoped to period if provided)
+        pr_query = select(PullRequest).where(PullRequest.repository_id == self.repository_id)
+        if cutoff_dt:
+            pr_query = pr_query.where(PullRequest.created_at >= cutoff_dt)
+        prs = self.db.scalars(pr_query).all()
+
+        total_prs = len(prs)
+        merged_prs = sum(1 for p in prs if p.is_merged)
         merge_rate = round((merged_prs / total_prs) * 100.0, 1) if total_prs > 0 else 0.0
 
         # 3. Average Review Time (hours) & Average Response Time (hours)
@@ -431,38 +495,44 @@ class RepositoryKPIEngine:
             for f in features
             if f.first_pr_review_duration_seconds is not None
         ]
-        avg_review_time_hours = round(sum(review_times) / len(review_times), 1) if review_times else None
+        avg_review_time_hours = (
+            round(sum(review_times) / len(review_times), 1) if review_times else None
+        )
 
         response_times = [
             f.first_response_time_seconds / 3600.0
             for f in features
             if f.first_response_time_seconds is not None
         ]
-        avg_response_time_hours = round(sum(response_times) / len(response_times), 1) if response_times else None
+        avg_response_time_hours = (
+            round(sum(response_times) / len(response_times), 1) if response_times else None
+        )
 
         # 4. High-Risk Contributor Count
         high_risk_count = sum(1 for f in features if f.churn_risk_level == "high")
 
         # 5. Contributor Growth (new contributors in last 30d vs previous 30d)
         new_last_30d = sum(
-            1 for f in features if f.first_contribution_at and (now_dt - _as_utc(f.first_contribution_at)).days <= 30
+            1
+            for f in features
+            if f.first_contribution_at and (now_dt - _as_utc(f.first_contribution_at)).days <= 30
         )
         new_prev_30d = sum(
-            1 for f in features if f.first_contribution_at and 30 < (now_dt - _as_utc(f.first_contribution_at)).days <= 60
+            1
+            for f in features
+            if f.first_contribution_at
+            and 30 < (now_dt - _as_utc(f.first_contribution_at)).days <= 60
         )
         if new_prev_30d > 0:
-            contributor_growth_rate = round(((new_last_30d - new_prev_30d) / new_prev_30d) * 100.0, 1)
+            contributor_growth_rate = round(
+                ((new_last_30d - new_prev_30d) / new_prev_30d) * 100.0, 1
+            )
         elif new_last_30d > 0:
             contributor_growth_rate = 100.0
         else:
             contributor_growth_rate = 0.0
 
         # 6. Composite Repository Health Score (0 to 100)
-        # Transparent formula:
-        # - Merge rate weight: 30% (merge_rate * 0.30)
-        # - Responsiveness weight: 25% (25 pts if <=24h, 15 pts if <=72h, 5 pts otherwise, 10 pts if no sample)
-        # - Retention weight: 25% ((retention_rate_30d or 50.0) * 0.25)
-        # - Low Churn risk weight: 20% (20 - (high_risk_count / total_contributors * 20))
         score = 0.0
         if total_contributors > 0 or total_prs > 0:
             # Component 1: Merge Rate (0 to 30)
@@ -483,7 +553,7 @@ class RepositoryKPIEngine:
             if retention_rate_30d is not None:
                 score += (retention_rate_30d / 100.0) * 25.0
             else:
-                score += 12.5  # Neutral baseline for newly created repos
+                score += 12.5  # Neutral baseline for newly created / short-window cohorts
 
             # Component 4: Low Risk Contributors (0 to 20)
             if total_contributors > 0:
@@ -496,6 +566,7 @@ class RepositoryKPIEngine:
 
         return {
             "repository_id": self.repository_id,
+            "period": period or "all",
             "total_contributors": total_contributors,
             "retention_rate_30d": retention_rate_30d,
             "retention_rate_90d": retention_rate_90d,
@@ -520,7 +591,9 @@ class RepositoryKPIEngine:
 class AnalyticsService:
     """Orchestrates retention feature engineering and repository KPI calculations."""
 
-    def __init__(self, db: Session, repository_id: int, analysis_run_id: Optional[int] = None) -> None:
+    def __init__(
+        self, db: Session, repository_id: int, analysis_run_id: Optional[int] = None
+    ) -> None:
         self.db = db
         self.repository_id = repository_id
         self.analysis_run_id = analysis_run_id

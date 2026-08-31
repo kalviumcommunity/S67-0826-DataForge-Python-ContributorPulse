@@ -48,23 +48,29 @@ def get_repository_by_name(
         )
 
     # Aggregated counts
-    total_prs = db.scalar(
-        select(func.count(PullRequest.id)).where(PullRequest.repository_id == repository.id)
-    ) or 0
-
-    total_issues = db.scalar(
-        select(func.count(Issue.id)).where(Issue.repository_id == repository.id)
-    ) or 0
-
-    total_commits = db.scalar(
-        select(func.count(Commit.id)).where(Commit.repository_id == repository.id)
-    ) or 0
-
-    distinct_contributors = db.scalar(
-        select(func.count(func.distinct(PullRequest.contributor_id))).where(
-            PullRequest.repository_id == repository.id
+    total_prs = (
+        db.scalar(
+            select(func.count(PullRequest.id)).where(PullRequest.repository_id == repository.id)
         )
-    ) or 0
+        or 0
+    )
+
+    total_issues = (
+        db.scalar(select(func.count(Issue.id)).where(Issue.repository_id == repository.id)) or 0
+    )
+
+    total_commits = (
+        db.scalar(select(func.count(Commit.id)).where(Commit.repository_id == repository.id)) or 0
+    )
+
+    distinct_contributors = (
+        db.scalar(
+            select(func.count(func.distinct(PullRequest.contributor_id))).where(
+                PullRequest.repository_id == repository.id
+            )
+        )
+        or 0
+    )
 
     # Latest analysis run
     latest_run = db.scalars(

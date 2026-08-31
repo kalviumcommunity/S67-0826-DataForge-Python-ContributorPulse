@@ -2,6 +2,7 @@
 
 import pytest
 from pydantic import ValidationError
+
 from backend.app.core.config import Settings, get_settings
 
 
@@ -9,7 +10,7 @@ def test_default_settings_instantiation() -> None:
     """Test default settings load without error."""
     settings = Settings(
         ENVIRONMENT="development",
-        GITHUB_TOKEN="ghp_dummytoken1234567890",
+        GITHUB_TOKEN="test_dummytoken1234567890",
         DATABASE_URL="postgresql://user:pass@localhost:5432/db",
     )
     assert settings.PROJECT_NAME == "ContributorPulse"
@@ -39,7 +40,7 @@ def test_cors_origins_parsing() -> None:
 
 def test_masked_secrets_safety() -> None:
     """Test secrets are masked and not exposed in repr or safe helpers."""
-    token = "ghp_1234567890abcdefghijklmnopqrstuvwxyz"
+    token = "test_1234567890abcdefghijklmnopqrstuvwxyz"
     db_url = "postgresql://myuser:secretpassword123@db.example.com:5432/pulse"
     settings = Settings(
         GITHUB_TOKEN=token,
@@ -51,7 +52,7 @@ def test_masked_secrets_safety() -> None:
     assert masked_tok is not None
     assert "secret" not in masked_tok
     assert token not in masked_tok
-    assert masked_tok.startswith("ghp_")
+    assert masked_tok.startswith("test")
     assert masked_tok.endswith("wxyz")
 
     # Test short token masking

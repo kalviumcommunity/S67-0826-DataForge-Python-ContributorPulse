@@ -2,7 +2,8 @@
 
 import logging
 from datetime import datetime, timezone
-from fastapi import FastAPI, HTTPException, Request, status
+
+from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -59,9 +60,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # --------------------------------------------------------------------------
 
     @app.exception_handler(StarletteHTTPException)
-    async def http_exception_handler(
-        request: Request, exc: StarletteHTTPException
-    ) -> JSONResponse:
+    async def http_exception_handler(request: Request, exc: StarletteHTTPException) -> JSONResponse:
         """Handle standard HTTP exceptions with uniform error envelope."""
         error_code = f"HTTP_{exc.status_code}"
         if exc.status_code == status.HTTP_404_NOT_FOUND:
@@ -102,7 +101,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Handle schema and parameter validation exceptions with detail list."""
         formatted_details = []
         for error in exc.errors():
-            loc = " -> ".join(str(l) for l in error.get("loc", []))
+            loc = " -> ".join(str(elem) for elem in error.get("loc", []))
             formatted_details.append(
                 {
                     "field": loc,
@@ -124,9 +123,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
 
     @app.exception_handler(Exception)
-    async def generic_exception_handler(
-        request: Request, exc: Exception
-    ) -> JSONResponse:
+    async def generic_exception_handler(request: Request, exc: Exception) -> JSONResponse:
         """Catch-all unhandled exception handler returning 500 error."""
         logger.exception("Unhandled server exception: %s", exc)
         error_response = ErrorResponse(

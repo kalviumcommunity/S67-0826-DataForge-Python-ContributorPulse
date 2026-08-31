@@ -4,18 +4,18 @@ import csv
 import io
 import json
 import re
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timedelta, timezone
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.app.analytics.engine import RepositoryKPIEngine
+from backend.app.analytics.engine import RepositoryKPIEngine, parse_period_days
 from backend.app.db.session import get_db
 from backend.app.models.base import utcnow
 from backend.app.models.contributor_feature import ContributorFeature
-from backend.app.models.pull_request import PullRequest
 from backend.app.models.repository import Repository
 from backend.app.models.user import User
 
@@ -26,6 +26,14 @@ def _sanitize_filename_component(name: str) -> str:
     """Sanitize repository name or owner for secure attachment filenames."""
     sanitized = re.sub(r"[^a-zA-Z0-9_.-]", "_", name)
     return sanitized or "repository"
+
+
+def _get_period_cutoff(period: Optional[str]) -> Optional[datetime]:
+    """Calculate UTC cutoff datetime for the requested period window."""
+    days = parse_period_days(period)
+    if not days:
+        return None
+    return utcnow() - timedelta(days=days)
 
 
 def _get_repository_or_404(db: Session, owner: str, name: str) -> Repository:
@@ -47,11 +55,14 @@ def _get_repository_or_404(db: Session, owner: str, name: str) -> Repository:
 @router.get(
     "/contributors.csv",
     summary="Export Contributor Journeys (CSV)",
-    description="Download a UTF-8 CSV export of all contributor retention features and risk metrics.",
+    description="Download a UTF-8 CSV export of all contributor retention features and risk metrics filtered by period.",
 )
 def export_contributors_csv(
     owner: str,
     repo: str,
+    period: Optional[str] = Query(
+        None, description="Time-period filter: e.g. 30d, 90d, 180d, 365d, all"
+    ),
     db: Session = Depends(get_db),
 ) -> Response:
     """Generate and stream contributor feature data as a CSV file."""
@@ -61,8 +72,14 @@ def export_contributors_csv(
         select(ContributorFeature, User)
         .join(User, ContributorFeature.contributor_id == User.id)
         .where(ContributorFeature.repository_id == repository.id)
-        .order_by(ContributorFeature.churn_risk_score.desc().nullslast(), User.login.asc())
     )
+    cutoff_dt = _get_period_cutoff(period)
+    if cutoff_dt:
+        query = query.where(
+            (ContributorFeature.first_contribution_at >= cutoff_dt)
+            | (ContributorFeature.last_active_at >= cutoff_dt)
+        )
+    query = query.order_by(ContributorFeature.churn_risk_score.desc().nullslast(), User.login.asc())
     records = db.execute(query).all()
 
     output = io.StringIO()
@@ -101,15 +118,21 @@ def export_contributors_csv(
                 feature.merged_prs or 0,
                 feature.total_commits or 0,
                 feature.total_reviews or 0,
-                f"{feature.first_response_time_seconds / 3600.0:.2f}"
-                if feature.first_response_time_seconds is not None
-                else "",
-                f"{feature.first_pr_review_duration_seconds / 3600.0:.2f}"
-                if feature.first_pr_review_duration_seconds is not None
-                else "",
-                f"{feature.first_pr_merge_duration_seconds / 3600.0:.2f}"
-                if feature.first_pr_merge_duration_seconds is not None
-                else "",
+                (
+                    f"{feature.first_response_time_seconds / 3600.0:.2f}"
+                    if feature.first_response_time_seconds is not None
+                    else ""
+                ),
+                (
+                    f"{feature.first_pr_review_duration_seconds / 3600.0:.2f}"
+                    if feature.first_pr_review_duration_seconds is not None
+                    else ""
+                ),
+                (
+                    f"{feature.first_pr_merge_duration_seconds / 3600.0:.2f}"
+                    if feature.first_pr_merge_duration_seconds is not None
+                    else ""
+                ),
                 "true" if feature.has_weekend_contributions else "false",
                 "true" if feature.is_active_maintainer else "false",
                 feature.risk_reason or "",
@@ -118,7 +141,8 @@ def export_contributors_csv(
 
     safe_owner = _sanitize_filename_component(owner)
     safe_repo = _sanitize_filename_component(repo)
-    filename = f"contributor_pulse_{safe_owner}_{safe_repo}_contributors.csv"
+    period_suffix = f"_{period}" if period and period != "all" else ""
+    filename = f"contributor_pulse_{safe_owner}_{safe_repo}{period_suffix}_contributors.csv"
 
     return Response(
         content=output.getvalue().encode("utf-8"),
@@ -130,17 +154,20 @@ def export_contributors_csv(
 @router.get(
     "/kpis.csv",
     summary="Export Repository KPIs (CSV)",
-    description="Download a UTF-8 CSV export of all computed repository KPIs, values, units, and sample sizes.",
+    description="Download a UTF-8 CSV export of all computed repository KPIs, values, units, and sample sizes filtered by period.",
 )
 def export_kpis_csv(
     owner: str,
     repo: str,
+    period: Optional[str] = Query(
+        None, description="Time-period filter: e.g. 30d, 90d, 180d, 365d, all"
+    ),
     db: Session = Depends(get_db),
 ) -> Response:
     """Generate and stream computed repository KPIs as a CSV file."""
     repository = _get_repository_or_404(db, owner, repo)
     kpi_engine = RepositoryKPIEngine(db, repository.id)
-    kpis = kpi_engine.calculate_kpis()
+    kpis = kpi_engine.calculate_kpis(period=period)
     sample_sizes = kpis.get("sample_sizes", {})
 
     output = io.StringIO()
@@ -150,14 +177,70 @@ def export_kpis_csv(
     writer.writerow(headers)
 
     definitions = [
-        ("health_score", "Repository Health Score", kpis.get("health_score"), "/100", sample_sizes.get("total_contributors", 0), "Bounded composite repository health score."),
-        ("retention_rate_30d", "30-Day Retention Rate", kpis.get("retention_rate_30d"), "%", sample_sizes.get("eligible_30d_contributors", 0), "Percentage of first-time contributors who returned within 30 days."),
-        ("retention_rate_90d", "90-Day Retention Rate", kpis.get("retention_rate_90d"), "%", sample_sizes.get("eligible_90d_contributors", 0), "Percentage of first-time contributors who returned within 90 days."),
-        ("merge_rate", "Pull Request Merge Rate", kpis.get("merge_rate"), "%", sample_sizes.get("total_prs", 0), "Percentage of total pull requests that were merged."),
-        ("average_first_response_hours", "Average First Response Time", kpis.get("avg_response_time_hours"), "hours", sample_sizes.get("responded_prs_sample", 0), "Average maintainer latency until first comment or review."),
-        ("average_review_hours", "Average Review Duration", kpis.get("avg_review_time_hours"), "hours", sample_sizes.get("reviewed_prs_sample", 0), "Average time elapsed until first code review."),
-        ("contributor_growth_rate", "Contributor Growth Rate", kpis.get("contributor_growth_rate"), "%", sample_sizes.get("total_contributors", 0), "Growth rate of new contributors over the analyzed period."),
-        ("high_risk_contributors_count", "High-Risk Contributor Count", kpis.get("high_risk_contributor_count"), "contributors", sample_sizes.get("total_contributors", 0), "Number of contributors flagged with churn risk score >= 0.60."),
+        (
+            "health_score",
+            "Repository Health Score",
+            kpis.get("health_score"),
+            "/100",
+            sample_sizes.get("total_contributors", 0),
+            "Bounded composite repository health score.",
+        ),
+        (
+            "retention_rate_30d",
+            "30-Day Retention Rate",
+            kpis.get("retention_rate_30d"),
+            "%",
+            sample_sizes.get("eligible_30d_contributors", 0),
+            "Percentage of first-time contributors who returned within 30 days.",
+        ),
+        (
+            "retention_rate_90d",
+            "90-Day Retention Rate",
+            kpis.get("retention_rate_90d"),
+            "%",
+            sample_sizes.get("eligible_90d_contributors", 0),
+            "Percentage of first-time contributors who returned within 90 days.",
+        ),
+        (
+            "merge_rate",
+            "Pull Request Merge Rate",
+            kpis.get("merge_rate"),
+            "%",
+            sample_sizes.get("total_prs", 0),
+            "Percentage of total pull requests that were merged.",
+        ),
+        (
+            "average_first_response_hours",
+            "Average First Response Time",
+            kpis.get("avg_response_time_hours"),
+            "hours",
+            sample_sizes.get("responded_prs_sample", 0),
+            "Average maintainer latency until first comment or review.",
+        ),
+        (
+            "average_review_hours",
+            "Average Review Duration",
+            kpis.get("avg_review_time_hours"),
+            "hours",
+            sample_sizes.get("reviewed_prs_sample", 0),
+            "Average time elapsed until first code review.",
+        ),
+        (
+            "contributor_growth_rate",
+            "Contributor Growth Rate",
+            kpis.get("contributor_growth_rate"),
+            "%",
+            sample_sizes.get("total_contributors", 0),
+            "Growth rate of new contributors over the analyzed period.",
+        ),
+        (
+            "high_risk_contributors_count",
+            "High-Risk Contributor Count",
+            kpis.get("high_risk_contributor_count"),
+            "contributors",
+            sample_sizes.get("total_contributors", 0),
+            "Number of contributors flagged with churn risk score >= 0.60.",
+        ),
     ]
 
     for key, name, val, unit, sample_size, desc in definitions:
@@ -165,7 +248,8 @@ def export_kpis_csv(
 
     safe_owner = _sanitize_filename_component(owner)
     safe_repo = _sanitize_filename_component(repo)
-    filename = f"contributor_pulse_{safe_owner}_{safe_repo}_kpis.csv"
+    period_suffix = f"_{period}" if period and period != "all" else ""
+    filename = f"contributor_pulse_{safe_owner}_{safe_repo}{period_suffix}_kpis.csv"
 
     return Response(
         content=output.getvalue().encode("utf-8"),
@@ -177,17 +261,20 @@ def export_kpis_csv(
 @router.get(
     "/report.json",
     summary="Download Full Report (JSON)",
-    description="Download a structured, comprehensive JSON report containing all repository intelligence.",
+    description="Download a structured, comprehensive JSON report containing all repository intelligence filtered by period.",
 )
 def export_report_json(
     owner: str,
     repo: str,
+    period: Optional[str] = Query(
+        None, description="Time-period filter: e.g. 30d, 90d, 180d, 365d, all"
+    ),
     db: Session = Depends(get_db),
 ) -> Response:
     """Generate and return comprehensive JSON intelligence report."""
     repository = _get_repository_or_404(db, owner, repo)
     kpi_engine = RepositoryKPIEngine(db, repository.id)
-    kpis = kpi_engine.calculate_kpis()
+    kpis = kpi_engine.calculate_kpis(period=period)
 
     high_risk_query = (
         select(ContributorFeature, User)
@@ -196,8 +283,14 @@ def export_report_json(
             ContributorFeature.repository_id == repository.id,
             ContributorFeature.churn_risk_score >= 0.60,
         )
-        .order_by(ContributorFeature.churn_risk_score.desc())
     )
+    cutoff_dt = _get_period_cutoff(period)
+    if cutoff_dt:
+        high_risk_query = high_risk_query.where(
+            (ContributorFeature.first_contribution_at >= cutoff_dt)
+            | (ContributorFeature.last_active_at >= cutoff_dt)
+        )
+    high_risk_query = high_risk_query.order_by(ContributorFeature.churn_risk_score.desc())
     high_risk_records = db.execute(high_risk_query).all()
     high_risk_items = [
         {
@@ -213,6 +306,7 @@ def export_report_json(
     report = {
         "report_title": f"ContributorPulse Intelligence Report - {repository.full_name}",
         "generated_at": datetime.now(timezone.utc).isoformat(),
+        "period_filter": period or "all",
         "repository": {
             "id": repository.id,
             "owner": repository.owner,
@@ -233,7 +327,8 @@ def export_report_json(
 
     safe_owner = _sanitize_filename_component(owner)
     safe_repo = _sanitize_filename_component(repo)
-    filename = f"contributor_pulse_{safe_owner}_{safe_repo}_report.json"
+    period_suffix = f"_{period}" if period and period != "all" else ""
+    filename = f"contributor_pulse_{safe_owner}_{safe_repo}{period_suffix}_report.json"
 
     json_str = json.dumps(report, indent=2, default=str)
     return Response(
@@ -246,20 +341,25 @@ def export_report_json(
 @router.get(
     "/report.html",
     summary="Download Printable Summary Report (HTML)",
-    description="Download a styled, print-friendly HTML intelligence summary report.",
+    description="Download a styled, print-friendly HTML intelligence summary report filtered by period.",
 )
 def export_report_html(
     owner: str,
     repo: str,
+    period: Optional[str] = Query(
+        None, description="Time-period filter: e.g. 30d, 90d, 180d, 365d, all"
+    ),
     db: Session = Depends(get_db),
 ) -> HTMLResponse:
     """Generate and return styled print-friendly HTML report."""
     repository = _get_repository_or_404(db, owner, repo)
     kpi_engine = RepositoryKPIEngine(db, repository.id)
-    kpis = kpi_engine.calculate_kpis()
+    kpis = kpi_engine.calculate_kpis(period=period)
 
     health_score = kpis.get("health_score", 0.0)
-    health_color = "#28a745" if health_score >= 80 else ("#ffc107" if health_score >= 60 else "#dc3545")
+    health_color = (
+        "#28a745" if health_score >= 80 else ("#ffc107" if health_score >= 60 else "#dc3545")
+    )
 
     first_resp = kpis.get("avg_response_time_hours")
     first_resp_str = f"{first_resp:.1f} hrs" if first_resp is not None else "N/A"
@@ -275,6 +375,10 @@ def export_report_html(
 
     merge_rate = kpis.get("merge_rate")
     merge_rate_str = f"{merge_rate:.1f}%" if merge_rate is not None else "N/A"
+
+    selected_period_label = (
+        f"Period: {period}" if period and period != "all" else "All Ingested History"
+    )
 
     html_content = f"""<!DOCTYPE html>
 <html lang="en">
@@ -299,7 +403,7 @@ def export_report_html(
     <div class="header">
         <h1>📊 ContributorPulse Intelligence Report</h1>
         <h2>Repository: {repository.full_name}</h2>
-        <p>Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')} | Health Score: <span class="badge">{health_score:.1f} / 100</span></p>
+        <p>Generated: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')} | {selected_period_label} | Health Score: <span class="badge">{health_score:.1f} / 100</span></p>
     </div>
 
     <div class="grid">
@@ -340,7 +444,8 @@ def export_report_html(
 
     safe_owner = _sanitize_filename_component(owner)
     safe_repo = _sanitize_filename_component(repo)
-    filename = f"contributor_pulse_{safe_owner}_{safe_repo}_report.html"
+    period_suffix = f"_{period}" if period and period != "all" else ""
+    filename = f"contributor_pulse_{safe_owner}_{safe_repo}{period_suffix}_report.html"
 
     return HTMLResponse(
         content=html_content,

@@ -1,4 +1,5 @@
 import streamlit as st
+
 from api_client import (
     APIConnectionError,
     APINotFoundError,
@@ -13,11 +14,7 @@ from api_client import (
 # PAGE CONFIGURATION
 # =========================================
 
-st.set_page_config(
-    page_title="Analyze Repository",
-    page_icon="🔍",
-    layout="wide"
-)
+st.set_page_config(page_title="Analyze Repository", page_icon="🔍", layout="wide")
 
 client = BackendAPIClient()
 
@@ -79,32 +76,62 @@ with col_b:
         placeholder="e.g. S67-0826-DataForge-Python-ContributorPulse",
     )
 
+
+def _sanitize_repo_input(raw_owner: str, raw_repo: str) -> tuple[str, str]:
+    """Extract clean owner and repository name even if full URLs or combined paths were entered."""
+    clean_owner = raw_owner.strip().rstrip("/")
+    clean_repo = raw_repo.strip().rstrip("/")
+
+    # Strip prefixes
+    for prefix in ["https://github.com/", "http://github.com/", "github.com/"]:
+        if clean_owner.startswith(prefix):
+            clean_owner = clean_owner[len(prefix) :]
+        if clean_repo.startswith(prefix):
+            clean_repo = clean_repo[len(prefix) :]
+
+    # Handle case where full 'owner/repo' was pasted into owner or repo field
+    if "/" in clean_owner and not clean_repo:
+        parts = clean_owner.split("/", 1)
+        clean_owner, clean_repo = parts[0], parts[1]
+    elif "/" in clean_repo and not clean_owner:
+        parts = clean_repo.split("/", 1)
+        clean_owner, clean_repo = parts[0], parts[1]
+    elif "/" in clean_owner and "/" in clean_repo:
+        clean_owner = clean_owner.split("/")[0]
+        clean_repo = clean_repo.split("/")[-1]
+
+    return clean_owner.strip("/"), clean_repo.strip("/")
+
+
 # =========================================
 # ANALYZE BUTTON & EXECUTION
 # =========================================
 
 if st.button("🚀 Analyze Repository", type="primary"):
-    owner = owner.strip()
-    repository = repository.strip()
+    clean_owner, clean_repo = _sanitize_repo_input(owner, repository)
 
-    if not owner or not repository:
-        st.error("Please enter both the repository owner and repository name.")
+    if not clean_owner or not clean_repo:
+        st.error(
+            "Please enter both the repository owner (e.g. `kalviumcommunity`) and repository name (e.g. `S67-0826-DataForge-Python-ContributorPulse`)."
+        )
     else:
-        st.session_state["owner"] = owner
-        st.session_state["repository"] = repository
+        st.session_state["owner"] = clean_owner
+        st.session_state["repository"] = clean_repo
 
         try:
             with st.spinner("Connecting to FastAPI backend and ingesting repository data..."):
-                analysis_run = client.trigger_analysis(owner, repository)
+                analysis_run = client.trigger_analysis(clean_owner, clean_repo)
                 st.session_state["analysis_run"] = analysis_run
                 st.session_state["analysis_started"] = True
 
-            st.success(f"✓ Analysis triggered successfully (Status: {analysis_run.get('status', 'COMPLETED')})")
+            st.success(
+                f"✓ Analysis triggered successfully (Status: {analysis_run.get('status', 'COMPLETED')})"
+            )
 
             with st.spinner("Fetching verified repository summary and health metrics..."):
-                repo_data = client.get_repository(owner, repository)
-                repo_summary = client.get_repository_summary(owner, repository)
-                repo_kpis = client.get_repository_kpis(owner, repository)
+                repo_data = client.get_repository(clean_owner, clean_repo)
+                repo_summary = client.get_repository_summary(clean_owner, clean_repo)
+                repo_kpis = client.get_repository_kpis(clean_owner, clean_repo)
 
                 st.session_state["repository_data"] = repo_data
                 st.session_state["repository_summary"] = repo_summary
@@ -125,8 +152,8 @@ if st.button("🚀 Analyze Repository", type="primary"):
             st.error(f"⏳ Rate Limit: {exc.message}")
         except APIServerError as exc:
             st.error(f"⚠️ Server Error: {exc.message}")
-        except Exception as exc:
-            st.error(f"An unexpected error occurred: {str(exc)}")
+        except Exception:
+            st.error("An unexpected error occurred while communicating with the backend.")
 
 # =========================================
 # RENDER VERIFIED REPOSITORY DATA

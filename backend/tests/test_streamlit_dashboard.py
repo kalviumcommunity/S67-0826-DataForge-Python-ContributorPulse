@@ -1,8 +1,9 @@
 """Unit and smoke tests for ContributorPulse Streamlit dashboard components and views."""
 
-import pytest
 import pandas as pd
-from api_client import BackendAPIClient, sanitize_error_message
+import pytest
+
+from api_client import sanitize_error_message
 from pages.dashboard import render_health_badge, safe_metric
 
 
@@ -25,9 +26,24 @@ def test_safe_metric_formatting() -> None:
 def test_funnel_dataframe_structure() -> None:
     """Test retention funnel data converts cleanly into DataFrame."""
     stages = [
-        {"stage": "Initial Contribution", "contributor_count": 100, "conversion_rate": 100.0, "drop_off_count": 0},
-        {"stage": "First PR Merged", "contributor_count": 75, "conversion_rate": 75.0, "drop_off_count": 25},
-        {"stage": "Retained 30d", "contributor_count": 35, "conversion_rate": 35.0, "drop_off_count": 40},
+        {
+            "stage": "Initial Contribution",
+            "contributor_count": 100,
+            "conversion_rate": 100.0,
+            "drop_off_count": 0,
+        },
+        {
+            "stage": "First PR Merged",
+            "contributor_count": 75,
+            "conversion_rate": 75.0,
+            "drop_off_count": 25,
+        },
+        {
+            "stage": "Retained 30d",
+            "contributor_count": 35,
+            "conversion_rate": 35.0,
+            "drop_off_count": 40,
+        },
     ]
     df = pd.DataFrame(stages)
     assert len(df) == 3
@@ -69,8 +85,22 @@ def test_high_risk_contributor_data_structure() -> None:
 def test_repository_comparison_dataframe() -> None:
     """Test multi-repository comparison structure."""
     repos = [
-        {"full_name": "org1/repo1", "health_score": 85.0, "retention_rate_30d": 40.0, "merge_rate": 80.0, "total_contributors": 50, "total_prs": 120},
-        {"full_name": "org2/repo2", "health_score": 65.0, "retention_rate_30d": 20.0, "merge_rate": 55.0, "total_contributors": 30, "total_prs": 80},
+        {
+            "full_name": "org1/repo1",
+            "health_score": 85.0,
+            "retention_rate_30d": 40.0,
+            "merge_rate": 80.0,
+            "total_contributors": 50,
+            "total_prs": 120,
+        },
+        {
+            "full_name": "org2/repo2",
+            "health_score": 65.0,
+            "retention_rate_30d": 20.0,
+            "merge_rate": 55.0,
+            "total_contributors": 30,
+            "total_prs": 80,
+        },
     ]
     df = pd.DataFrame(repos)
     assert len(df) == 2

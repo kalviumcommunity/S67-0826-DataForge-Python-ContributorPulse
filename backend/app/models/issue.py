@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
+
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -45,7 +46,9 @@ class Issue(Base):
     state: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # open, closed
     is_pull_request: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     comments_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 

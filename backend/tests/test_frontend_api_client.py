@@ -1,11 +1,9 @@
 """Deterministic unit tests for Streamlit-to-FastAPI BackendAPIClient."""
 
-import os
-import pytest
 import httpx
+import pytest
 
 from api_client import (
-    APIClientError,
     APIConnectionError,
     APINotFoundError,
     APIRateLimitError,
@@ -90,8 +88,13 @@ def test_get_repository_kpis_mock_success(monkeypatch: pytest.MonkeyPatch) -> No
 
 def test_404_not_found_handling(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test 404 response raises APINotFoundError."""
+
     def mock_request(self, method, url, **kwargs):
-        return httpx.Response(404, json={"status": "error", "message": "Repository not found."}, request=httpx.Request(method, url))
+        return httpx.Response(
+            404,
+            json={"status": "error", "message": "Repository not found."},
+            request=httpx.Request(method, url),
+        )
 
     monkeypatch.setattr(httpx.Client, "request", mock_request)
 
@@ -103,8 +106,13 @@ def test_404_not_found_handling(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_422_validation_error_handling(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test 422 response raises APIValidationError."""
+
     def mock_request(self, method, url, **kwargs):
-        return httpx.Response(422, json={"status": "error", "message": "Invalid parameter."}, request=httpx.Request(method, url))
+        return httpx.Response(
+            422,
+            json={"status": "error", "message": "Invalid parameter."},
+            request=httpx.Request(method, url),
+        )
 
     monkeypatch.setattr(httpx.Client, "request", mock_request)
 
@@ -116,8 +124,13 @@ def test_422_validation_error_handling(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_429_rate_limit_handling(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test 429 response raises APIRateLimitError."""
+
     def mock_request(self, method, url, **kwargs):
-        return httpx.Response(429, json={"status": "error", "message": "Rate limit exceeded."}, request=httpx.Request(method, url))
+        return httpx.Response(
+            429,
+            json={"status": "error", "message": "Rate limit exceeded."},
+            request=httpx.Request(method, url),
+        )
 
     monkeypatch.setattr(httpx.Client, "request", mock_request)
 
@@ -128,8 +141,13 @@ def test_429_rate_limit_handling(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_500_server_error_handling(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test 500/503 response raises APIServerError."""
+
     def mock_request(self, method, url, **kwargs):
-        return httpx.Response(500, json={"status": "error", "message": "Internal error."}, request=httpx.Request(method, url))
+        return httpx.Response(
+            500,
+            json={"status": "error", "message": "Internal error."},
+            request=httpx.Request(method, url),
+        )
 
     monkeypatch.setattr(httpx.Client, "request", mock_request)
 
@@ -140,6 +158,7 @@ def test_500_server_error_handling(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_timeout_handling(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test httpx.TimeoutException raises APITimeoutError."""
+
     def mock_request(self, method, url, **kwargs):
         raise httpx.TimeoutException("Connection timed out")
 
@@ -153,6 +172,7 @@ def test_timeout_handling(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_connection_error_handling(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test httpx.NetworkError raises APIConnectionError."""
+
     def mock_request(self, method, url, **kwargs):
         raise httpx.NetworkError("Failed to connect")
 
@@ -166,6 +186,7 @@ def test_connection_error_handling(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_empty_and_not_found_getters(monkeypatch: pytest.MonkeyPatch) -> None:
     """Test helper getters return None when 404 is encountered."""
+
     def mock_request(self, method, url, **kwargs):
         return httpx.Response(404, json={"status": "error"}, request=httpx.Request(method, url))
 

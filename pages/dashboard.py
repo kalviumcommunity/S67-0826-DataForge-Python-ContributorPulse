@@ -1,6 +1,5 @@
-"""ContributorPulse - Complete Streamlit Analytics Dashboard."""
+from typing import Any, Optional
 
-from typing import Any, Dict, List, Optional
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -15,6 +14,7 @@ from api_client import (
     APITimeoutError,
     APIValidationError,
     BackendAPIClient,
+    sanitize_error_message,
 )
 
 # ==============================================================================
@@ -48,6 +48,7 @@ if "time_period" not in st.session_state:
 # ==============================================================================
 # Helper Functions & Safe Formatters
 # ==============================================================================
+
 
 def render_health_badge(score: Optional[float]) -> str:
     """Return health classification and badge format."""
@@ -115,15 +116,38 @@ selected_period = st.sidebar.selectbox(
 )
 st.session_state["time_period"] = selected_period
 
+
+def _sanitize_repo_input(raw_owner: str, raw_repo: str) -> tuple[str, str]:
+    """Extract clean owner and repository name even if full URLs or combined paths were entered."""
+    clean_owner = raw_owner.strip().rstrip("/")
+    clean_repo = raw_repo.strip().rstrip("/")
+    for prefix in ["https://github.com/", "http://github.com/", "github.com/"]:
+        if clean_owner.startswith(prefix):
+            clean_owner = clean_owner[len(prefix) :]
+        if clean_repo.startswith(prefix):
+            clean_repo = clean_repo[len(prefix) :]
+    if "/" in clean_owner and not clean_repo:
+        parts = clean_owner.split("/", 1)
+        clean_owner, clean_repo = parts[0], parts[1]
+    elif "/" in clean_repo and not clean_owner:
+        parts = clean_repo.split("/", 1)
+        clean_owner, clean_repo = parts[0], parts[1]
+    elif "/" in clean_owner and "/" in clean_repo:
+        clean_owner = clean_owner.split("/")[0]
+        clean_repo = clean_repo.split("/")[-1]
+    return clean_owner.strip("/"), clean_repo.strip("/")
+
+
 if trigger_btn or (refresh_btn and input_owner and input_repo):
-    if not input_owner.strip() or not input_repo.strip():
+    clean_owner, clean_repo = _sanitize_repo_input(input_owner, input_repo)
+    if not clean_owner or not clean_repo:
         st.sidebar.error("Please provide both repository owner and name.")
     else:
-        st.session_state["owner"] = input_owner.strip()
-        st.session_state["repository"] = input_repo.strip()
+        st.session_state["owner"] = clean_owner
+        st.session_state["repository"] = clean_repo
         try:
             with st.spinner("Connecting to backend and analyzing repository..."):
-                run = client.trigger_analysis(st.session_state["owner"], st.session_state["repository"])
+                run = client.trigger_analysis(clean_owner, clean_repo)
                 st.session_state["analysis_run"] = run
             st.sidebar.success(f"Analysis Status: {run.get('status', 'COMPLETED')}")
         except APINotFoundError as exc:
@@ -139,7 +163,7 @@ if trigger_btn or (refresh_btn and input_owner and input_repo):
         except APIServerError as exc:
             st.sidebar.error(f"⚠️ Server Error: {exc.message}")
         except Exception as exc:
-            st.sidebar.error(f"Unexpected error: {str(exc)}")
+            st.sidebar.error(f"Unexpected error: {sanitize_error_message(str(exc))}")
 
 st.sidebar.divider()
 st.sidebar.subheader("Dashboard Views")
@@ -151,7 +175,9 @@ views = [
     "⚠️ Contributor Risk & Segmentation",
     "⚖️ Repository Comparison & Monitoring",
 ]
-selected_view = st.sidebar.radio("Select View", views, index=views.index(st.session_state["selected_view"]))
+selected_view = st.sidebar.radio(
+    "Select View", views, index=views.index(st.session_state["selected_view"])
+)
 st.session_state["selected_view"] = selected_view
 
 owner = st.session_state["owner"]
@@ -163,20 +189,26 @@ repo = st.session_state["repository"]
 
 if not owner or not repo:
     st.title("📊 ContributorPulse Intelligence Dashboard")
-    st.info("👈 Enter a GitHub repository owner and name in the sidebar, then click **🚀 Analyze** to begin.")
-    
+    st.info(
+        "👈 Enter a GitHub repository owner and name in the sidebar, then click **🚀 Analyze** to begin."
+    )
+
     st.divider()
     st.subheader("Platform Capabilities")
     c1, c2, c3 = st.columns(3)
     with c1:
         st.markdown("### 🏛️ Health & Retention")
-        st.write("Understand 30d and 90d return velocity, PR merge rates, and holistic repository health.")
+        st.write(
+            "Understand 30d and 90d return velocity, PR merge rates, and holistic repository health."
+        )
     with c2:
         st.markdown("### ⏱️ Latency & Velocity")
         st.write("Measure maintainer response speed, review turnaround times, and friction points.")
     with c3:
         st.markdown("### ⚠️ Churn Risk Detection")
-        st.write("Identify at-risk first-time contributors with transparent, explainable penalty reasons.")
+        st.write(
+            "Identify at-risk first-time contributors with transparent, explainable penalty reasons."
+        )
     st.stop()
 
 # ==============================================================================
@@ -184,7 +216,9 @@ if not owner or not repo:
 # ==============================================================================
 
 st.title(f"{selected_view}")
-st.caption(f"Repository: **{owner}/{repo}** | Time Period: **{selected_period}** | Maintainer Intelligence")
+st.caption(
+    f"Repository: **{owner}/{repo}** | Time Period: **{selected_period}** | Maintainer Intelligence"
+)
 st.divider()
 
 # ==============================================================================
@@ -194,12 +228,14 @@ st.divider()
 if selected_view == "🏛️ Overview & Health":
     try:
         with st.spinner("Fetching repository summary and KPI engine metrics..."):
-            summary = client.get_repository_summary(owner, repo)
-            kpis_res = client.get_repository_kpis(owner, repo)
+            summary = client.get_repository_summary(owner, repo, period=selected_period)
+            kpis_res = client.get_repository_kpis(owner, repo, period=selected_period)
             repo_meta = client.get_repository(owner, repo)
 
         if not summary or not kpis_res:
-            st.warning("⚠️ No analytics summary found for this repository. Please run an analysis first.")
+            st.warning(
+                "⚠️ No analytics summary found for this repository. Please run an analysis first."
+            )
             st.stop()
 
         kpis = kpis_res.get("kpis", {})
@@ -221,37 +257,69 @@ if selected_view == "🏛️ Overview & Health":
         k1, k2, k3, k4 = st.columns(4)
         with k1:
             ret30 = kpis.get("retention_rate_30d", {})
-            st.metric("30-Day Retention", safe_metric(ret30.get("value"), "%"), help=ret30.get("description", ""))
+            st.metric(
+                "30-Day Retention",
+                safe_metric(ret30.get("value"), "%"),
+                help=ret30.get("description", ""),
+            )
             st.caption(f"Sample size: {ret30.get('sample_size', 0)} contributors")
         with k2:
             ret90 = kpis.get("retention_rate_90d", {})
-            st.metric("90-Day Retention", safe_metric(ret90.get("value"), "%"), help=ret90.get("description", ""))
+            st.metric(
+                "90-Day Retention",
+                safe_metric(ret90.get("value"), "%"),
+                help=ret90.get("description", ""),
+            )
             st.caption(f"Sample size: {ret90.get('sample_size', 0)} contributors")
         with k3:
             merge_rate = kpis.get("merge_rate", {})
-            st.metric("PR Merge Rate", safe_metric(merge_rate.get("value"), "%"), help=merge_rate.get("description", ""))
+            st.metric(
+                "PR Merge Rate",
+                safe_metric(merge_rate.get("value"), "%"),
+                help=merge_rate.get("description", ""),
+            )
             st.caption(f"Sample size: {merge_rate.get('sample_size', 0)} PRs")
         with k4:
             growth = kpis.get("contributor_growth_rate", {})
-            st.metric("Contributor Growth", safe_metric(growth.get("value"), "%"), help=growth.get("description", ""))
+            st.metric(
+                "Contributor Growth",
+                safe_metric(growth.get("value"), "%"),
+                help=growth.get("description", ""),
+            )
             st.caption(f"Sample size: {growth.get('sample_size', 0)} contributors")
 
         k5, k6, k7, k8 = st.columns(4)
         with k5:
             resp_time = kpis.get("average_first_response_hours", {})
-            st.metric("Avg First Response", safe_metric(resp_time.get("value"), " hrs"), help=resp_time.get("description", ""))
+            st.metric(
+                "Avg First Response",
+                safe_metric(resp_time.get("value"), " hrs"),
+                help=resp_time.get("description", ""),
+            )
             st.caption(f"Sample size: {resp_time.get('sample_size', 0)} PRs")
         with k6:
             rev_time = kpis.get("average_review_hours", {})
-            st.metric("Avg Review Time", safe_metric(rev_time.get("value"), " hrs"), help=rev_time.get("description", ""))
+            st.metric(
+                "Avg Review Time",
+                safe_metric(rev_time.get("value"), " hrs"),
+                help=rev_time.get("description", ""),
+            )
             st.caption(f"Sample size: {rev_time.get('sample_size', 0)} PRs")
         with k7:
             mrg_time = kpis.get("average_merge_hours", {})
-            st.metric("Avg Time to Merge", safe_metric(mrg_time.get("value"), " hrs"), help=mrg_time.get("description", ""))
+            st.metric(
+                "Avg Time to Merge",
+                safe_metric(mrg_time.get("value"), " hrs"),
+                help=mrg_time.get("description", ""),
+            )
             st.caption(f"Sample size: {mrg_time.get('sample_size', 0)} PRs")
         with k8:
             high_risk = kpis.get("high_risk_contributors_count", {})
-            st.metric("High-Risk Contributors", safe_metric(high_risk.get("value"), ""), help=high_risk.get("description", ""))
+            st.metric(
+                "High-Risk Contributors",
+                safe_metric(high_risk.get("value"), ""),
+                help=high_risk.get("description", ""),
+            )
             st.caption("Active contributors flagged with churn risk")
 
         st.divider()
@@ -279,7 +347,7 @@ if selected_view == "🏛️ Overview & Health":
 elif selected_view == "👥 Contributor Journey & Retention":
     try:
         with st.spinner("Fetching retention funnel data..."):
-            funnel_data = client.get_retention_funnel(owner, repo)
+            funnel_data = client.get_retention_funnel(owner, repo, period=selected_period)
 
         if not funnel_data or not funnel_data.get("stages"):
             st.info("ℹ️ No retention funnel records available for this repository yet.")
@@ -332,8 +400,8 @@ elif selected_view == "👥 Contributor Journey & Retention":
 elif selected_view == "⏱️ Response & Review Experience":
     try:
         with st.spinner("Fetching response distribution and timeline..."):
-            dist_data = client.get_response_distribution(owner, repo)
-            timeline_data = client.get_review_timeline(owner, repo)
+            dist_data = client.get_response_distribution(owner, repo, period=selected_period)
+            timeline_data = client.get_review_timeline(owner, repo, period=selected_period)
 
         col_d1, col_d2 = st.columns(2)
 
@@ -348,7 +416,11 @@ elif selected_view == "⏱️ Response & Review Experience":
                     x="bracket",
                     y="count",
                     text="percentage",
-                    labels={"bracket": "Response Time Bracket", "count": "PR Count", "percentage": "%"},
+                    labels={
+                        "bracket": "Response Time Bracket",
+                        "count": "PR Count",
+                        "percentage": "%",
+                    },
                     color="bracket",
                     color_discrete_sequence=px.colors.qualitative.Prism,
                 )
@@ -386,7 +458,7 @@ elif selected_view == "⏱️ Response & Review Experience":
 elif selected_view == "🔀 Pull Request & Merge Analytics":
     try:
         with st.spinner("Fetching pull request merge statistics..."):
-            merge_data = client.get_merge_stats(owner, repo)
+            merge_data = client.get_merge_stats(owner, repo, period=selected_period)
 
         if not merge_data or merge_data.get("total_prs", 0) == 0:
             st.info("ℹ️ No pull request activity records found for this repository.")
@@ -437,7 +509,7 @@ elif selected_view == "🔀 Pull Request & Merge Analytics":
 elif selected_view == "⚠️ Contributor Risk & Segmentation":
     try:
         with st.spinner("Fetching contributor intelligence and churn risk segmentation..."):
-            risk_data = client.get_high_risk_contributors(owner, repo)
+            risk_data = client.get_high_risk_contributors(owner, repo, period=selected_period)
 
         st.subheader("High Churn Risk Contributor Alerts")
         st.write(
@@ -488,7 +560,9 @@ elif selected_view == "⚠️ Contributor Risk & Segmentation":
 
 elif selected_view == "⚖️ Repository Comparison & Monitoring":
     st.subheader("Side-by-Side Repository Comparison")
-    st.write("Compare contributor health, retention, and merge velocity across multiple repositories.")
+    st.write(
+        "Compare contributor health, retention, and merge velocity across multiple repositories."
+    )
 
     default_compare = f"{owner}/{repo}" if (owner and repo) else ""
     compare_input = st.text_input(
@@ -552,7 +626,11 @@ elif selected_view == "⚖️ Repository Comparison & Monitoring":
                         x="full_name",
                         y=["health_score", "retention_rate_30d", "merge_rate"],
                         barmode="group",
-                        labels={"full_name": "Repository", "value": "Score / Percentage", "variable": "Metric"},
+                        labels={
+                            "full_name": "Repository",
+                            "value": "Score / Percentage",
+                            "variable": "Metric",
+                        },
                         title="Repository Health and Retention Benchmarks",
                     )
                     fig_comp.update_layout(template="plotly_white")
@@ -573,7 +651,7 @@ if owner and repo:
     col_e1, col_e2, col_e3, col_e4 = st.columns(4)
 
     with col_e1:
-        kpi_csv = client.export_kpis_csv(owner, repo)
+        kpi_csv = client.export_kpis_csv(owner, repo, period=selected_period)
         if kpi_csv:
             st.download_button(
                 label="📊 Download KPIs (CSV)",
@@ -584,7 +662,7 @@ if owner and repo:
             )
 
     with col_e2:
-        contrib_csv = client.export_contributors_csv(owner, repo)
+        contrib_csv = client.export_contributors_csv(owner, repo, period=selected_period)
         if contrib_csv:
             st.download_button(
                 label="👥 Download Contributors (CSV)",
@@ -595,7 +673,7 @@ if owner and repo:
             )
 
     with col_e3:
-        report_json = client.export_report_json(owner, repo)
+        report_json = client.export_report_json(owner, repo, period=selected_period)
         if report_json:
             st.download_button(
                 label="📄 Download Report (JSON)",
@@ -606,7 +684,7 @@ if owner and repo:
             )
 
     with col_e4:
-        report_html = client.export_report_html(owner, repo)
+        report_html = client.export_report_html(owner, repo, period=selected_period)
         if report_html:
             st.download_button(
                 label="🖨️ Printable Report (HTML)",
@@ -614,4 +692,4 @@ if owner and repo:
                 file_name=f"contributor_pulse_{owner}_{repo}_report.html",
                 mime="text/html",
                 use_container_width=True,
-            )
+            )

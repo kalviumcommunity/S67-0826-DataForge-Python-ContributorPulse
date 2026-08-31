@@ -2,8 +2,8 @@
 
 import csv
 import io
-import json
 from datetime import timedelta
+
 import pytest
 from fastapi import status
 from fastapi.testclient import TestClient
@@ -16,7 +16,6 @@ from backend.app.core.config import Settings
 from backend.app.db.session import get_db
 from backend.app.main import create_app
 from backend.app.models.base import Base, utcnow
-from backend.app.models.comment import Comment
 from backend.app.models.pull_request import PullRequest
 from backend.app.models.repository import Repository
 from backend.app.models.review import Review
@@ -92,7 +91,7 @@ def exports_test_client():
     test_settings = Settings(
         ENVIRONMENT="testing",
         DATABASE_URL="sqlite:///:memory:",
-        GITHUB_TOKEN="ghp_test_token_1234567890",
+        GITHUB_TOKEN="test_token_1234567890",
     )
     app = create_app(settings=test_settings)
 
@@ -111,53 +110,52 @@ def exports_test_client():
 
 
 # ------------------------------------------------------------------------------
-# 1. Contributor CSV Export Tests
+# Tests for CSV, JSON, and HTML Export Endpoints
 # ------------------------------------------------------------------------------
 
-def test_export_contributors_csv_success(exports_test_client: TestClient) -> None:
-    """Test GET /api/v1/repositories/{owner}/{repo}/exports/contributors.csv returns valid CSV."""
-    resp = exports_test_client.get("/api/v1/repositories/export-org/pulse-export/exports/contributors.csv")
-    assert resp.status_code == status.HTTP_200_OK
-    assert "text/csv" in resp.headers["content-type"]
+
+def test_export_contributors_csv(exports_test_client: TestClient) -> None:
+    """Test downloading contributors CSV export."""
+    resp = exports_test_client.get(
+        "/api/v1/repositories/export-org/pulse-export/exports/contributors.csv"
+    )
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
     assert "attachment; filename=" in resp.headers["content-disposition"]
-    assert "contributor_pulse_export-org_pulse-export_contributors.csv" in resp.headers["content-disposition"]
+    assert (
+        "contributor_pulse_export-org_pulse-export_contributors.csv"
+        in resp.headers["content-disposition"]
+    )
 
-    csv_reader = csv.reader(io.StringIO(resp.text))
-    rows = list(csv_reader)
-    assert len(rows) >= 2  # Header + at least 1 record
-    headers = rows[0]
-    assert "login" in headers
-    assert "churn_risk_score" in headers
-    assert "experience_level" in headers
-    assert "risk_reason" in headers
-    assert rows[1][0] == "alice_exporter"
+    # Verify CSV content
+    reader = csv.reader(io.StringIO(resp.text))
+    rows = list(reader)
+    assert len(rows) == 2  # Header + 1 contributor
+    assert rows[0][0] == "login"
+    assert rows[0][1] == "name"
+    assert rows[0][4] == "churn_risk_level"
 
 
-# ------------------------------------------------------------------------------
-# 2. KPIs CSV Export Tests
-# ------------------------------------------------------------------------------
-
-def test_export_kpis_csv_success(exports_test_client: TestClient) -> None:
-    """Test GET /api/v1/repositories/{owner}/{repo}/exports/kpis.csv returns structured KPIs."""
+def test_export_kpis_csv(exports_test_client: TestClient) -> None:
+    """Test downloading KPIs CSV export."""
     resp = exports_test_client.get("/api/v1/repositories/export-org/pulse-export/exports/kpis.csv")
-    assert resp.status_code == status.HTTP_200_OK
-    assert "text/csv" in resp.headers["content-type"]
-    assert "contributor_pulse_export-org_pulse-export_kpis.csv" in resp.headers["content-disposition"]
+    assert resp.status_code == 200
+    assert resp.headers["content-type"].startswith("text/csv")
+    assert (
+        "contributor_pulse_export-org_pulse-export_kpis.csv" in resp.headers["content-disposition"]
+    )
 
-    csv_reader = csv.reader(io.StringIO(resp.text))
-    rows = list(csv_reader)
-    assert len(rows) >= 5
-    headers = rows[0]
-    assert headers == ["metric_key", "metric_name", "value", "unit", "sample_size", "description"]
+    reader = csv.reader(io.StringIO(resp.text))
+    rows = list(reader)
+    assert len(rows) > 5
+    assert rows[0] == ["metric_key", "metric_name", "value", "unit", "sample_size", "description"]
 
 
-# ------------------------------------------------------------------------------
-# 3. JSON Intelligence Report Tests
-# ------------------------------------------------------------------------------
-
-def test_export_report_json_success(exports_test_client: TestClient) -> None:
-    """Test GET /api/v1/repositories/{owner}/{repo}/exports/report.json returns complete report."""
-    resp = exports_test_client.get("/api/v1/repositories/export-org/pulse-export/exports/report.json")
+def test_export_report_json(exports_test_client: TestClient) -> None:
+    """Test downloading full JSON report."""
+    resp = exports_test_client.get(
+        "/api/v1/repositories/export-org/pulse-export/exports/report.json"
+    )
     assert resp.status_code == status.HTTP_200_OK
     assert "application/json" in resp.headers["content-type"]
     data = resp.json()
@@ -172,9 +170,12 @@ def test_export_report_json_success(exports_test_client: TestClient) -> None:
 # 4. HTML Report Tests
 # ------------------------------------------------------------------------------
 
+
 def test_export_report_html_success(exports_test_client: TestClient) -> None:
     """Test GET /api/v1/repositories/{owner}/{repo}/exports/report.html returns styled HTML."""
-    resp = exports_test_client.get("/api/v1/repositories/export-org/pulse-export/exports/report.html")
+    resp = exports_test_client.get(
+        "/api/v1/repositories/export-org/pulse-export/exports/report.html"
+    )
     assert resp.status_code == status.HTTP_200_OK
     assert "text/html" in resp.headers["content-type"]
     assert "export-org/pulse-export" in resp.text
@@ -186,6 +187,7 @@ def test_export_report_html_success(exports_test_client: TestClient) -> None:
 # 5. Error & 404 Tests
 # ------------------------------------------------------------------------------
 
+
 def test_export_unknown_repository_404(exports_test_client: TestClient) -> None:
     """Test 404 status when exporting non-existent repository."""
     resp = exports_test_client.get("/api/v1/repositories/unknown/repo/exports/report.json")
@@ -195,6 +197,7 @@ def test_export_unknown_repository_404(exports_test_client: TestClient) -> None:
 # ------------------------------------------------------------------------------
 # 6. Readiness Probe Tests
 # ------------------------------------------------------------------------------
+
 
 def test_health_readiness_probe_success(exports_test_client: TestClient) -> None:
     """Test GET /health/ready returns 200 ready status."""

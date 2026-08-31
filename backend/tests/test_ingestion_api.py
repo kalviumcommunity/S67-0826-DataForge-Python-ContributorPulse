@@ -4,18 +4,11 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from backend.app.core.config import Settings
 from backend.app.db.session import get_db
-from backend.app.integrations.exceptions import (
-    GitHubAuthenticationError,
-    GitHubForbiddenError,
-    GitHubRateLimitError,
-    GitHubServerError,
-    GitHubTimeoutError,
-)
 from backend.app.integrations.github import GitHubClient, get_github_client
 from backend.app.main import create_app
 from backend.app.models.base import Base
@@ -48,70 +41,116 @@ def api_test_client():
         elif "forbidden-repo" in path:
             return httpx.Response(403, json={"message": "Access Forbidden"})
         elif "rate-limited" in path:
-            return httpx.Response(429, headers={"retry-after": "60"}, json={"message": "Rate limit"})
+            return httpx.Response(
+                429, headers={"retry-after": "60"}, json={"message": "Rate limit"}
+            )
         elif "timeout-repo" in path:
             raise httpx.ConnectTimeout("Network timed out")
         elif "server-err" in path:
             return httpx.Response(500, json={"message": "Internal error"})
 
         if path == "/repos/kalvium/pulse-demo":
-            return httpx.Response(200, json={
-                "id": 88888,
-                "name": "pulse-demo",
-                "full_name": "kalvium/pulse-demo",
-                "owner": {"login": "kalvium", "id": 11111},
-                "description": "Demo repository for ContributorPulse",
-                "stargazers_count": 120,
-                "forks_count": 30,
-                "open_issues_count": 5,
-                "language": "Python",
-                "default_branch": "main",
-                "private": False,
-                "fork": False,
-                "pushed_at": "2026-08-28T14:00:00Z",
-            })
+            return httpx.Response(
+                200,
+                json={
+                    "id": 88888,
+                    "name": "pulse-demo",
+                    "full_name": "kalvium/pulse-demo",
+                    "owner": {"login": "kalvium", "id": 11111},
+                    "description": "Demo repository for ContributorPulse",
+                    "stargazers_count": 120,
+                    "forks_count": 30,
+                    "open_issues_count": 5,
+                    "language": "Python",
+                    "default_branch": "main",
+                    "private": False,
+                    "fork": False,
+                    "pushed_at": "2026-08-28T14:00:00Z",
+                },
+            )
         elif path.endswith("/contributors"):
-            return httpx.Response(200, json=[
-                {"id": 11111, "login": "kalvium", "type": "User"},
-                {"id": 22222, "login": "dev_user", "type": "User"},
-            ])
+            return httpx.Response(
+                200,
+                json=[
+                    {"id": 11111, "login": "kalvium", "type": "User"},
+                    {"id": 22222, "login": "dev_user", "type": "User"},
+                ],
+            )
         elif path.endswith("/pulls"):
-            return httpx.Response(200, json=[
-                {
-                    "id": 901,
-                    "number": 1,
-                    "title": "Initial onboarding",
-                    "body": "First PR",
-                    "state": "closed",
-                    "draft": False,
-                    "merged": True,
-                    "merged_at": "2026-08-20T10:00:00Z",
-                    "created_at": "2026-08-19T08:00:00Z",
-                    "closed_at": "2026-08-20T10:00:00Z",
-                    "author_association": "FIRST_TIME_CONTRIBUTOR",
-                    "user": {"id": 22222, "login": "dev_user", "type": "User"},
-                }
-            ])
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 901,
+                        "number": 1,
+                        "title": "Initial onboarding",
+                        "body": "First PR",
+                        "state": "closed",
+                        "draft": False,
+                        "merged": True,
+                        "merged_at": "2026-08-20T10:00:00Z",
+                        "created_at": "2026-08-19T08:00:00Z",
+                        "closed_at": "2026-08-20T10:00:00Z",
+                        "author_association": "FIRST_TIME_CONTRIBUTOR",
+                        "user": {"id": 22222, "login": "dev_user", "type": "User"},
+                    }
+                ],
+            )
         elif "/reviews" in path:
-            return httpx.Response(200, json=[
-                {"id": 902, "state": "APPROVED", "body": "LGTM", "submitted_at": "2026-08-19T12:00:00Z", "user": {"id": 11111, "login": "kalvium"}}
-            ])
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 902,
+                        "state": "APPROVED",
+                        "body": "LGTM",
+                        "submitted_at": "2026-08-19T12:00:00Z",
+                        "user": {"id": 11111, "login": "kalvium"},
+                    }
+                ],
+            )
         elif path.endswith("/issues"):
-            return httpx.Response(200, json=[
-                {"id": 903, "number": 2, "title": "First issue", "state": "open", "created_at": "2026-08-21T09:00:00Z", "user": {"id": 22222, "login": "dev_user"}}
-            ])
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 903,
+                        "number": 2,
+                        "title": "First issue",
+                        "state": "open",
+                        "created_at": "2026-08-21T09:00:00Z",
+                        "user": {"id": 22222, "login": "dev_user"},
+                    }
+                ],
+            )
         elif path.endswith("/comments"):
-            return httpx.Response(200, json=[
-                {"id": 904, "body": "Issue comment", "created_at": "2026-08-21T10:00:00Z", "issue_url": "https://api.github.com/repos/kalvium/pulse-demo/issues/2", "user": {"id": 11111, "login": "kalvium"}}
-            ])
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 904,
+                        "body": "Issue comment",
+                        "created_at": "2026-08-21T10:00:00Z",
+                        "issue_url": "https://api.github.com/repos/kalvium/pulse-demo/issues/2",
+                        "user": {"id": 11111, "login": "kalvium"},
+                    }
+                ],
+            )
         elif path.endswith("/commits"):
-            return httpx.Response(200, json=[
-                {
-                    "sha": "c0ffee123456",
-                    "commit": {"message": "feat: init", "author": {"name": "dev_user", "date": "2026-08-19T07:00:00Z"}, "committer": {"name": "dev_user", "date": "2026-08-19T07:00:00Z"}},
-                    "author": {"id": 22222, "login": "dev_user"},
-                }
-            ])
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "sha": "c0ffee123456",
+                        "commit": {
+                            "message": "feat: init",
+                            "author": {"name": "dev_user", "date": "2026-08-19T07:00:00Z"},
+                            "committer": {"name": "dev_user", "date": "2026-08-19T07:00:00Z"},
+                        },
+                        "author": {"id": 22222, "login": "dev_user"},
+                    }
+                ],
+            )
         return httpx.Response(200, json={})
 
     transport = httpx.MockTransport(mock_github_handler)
@@ -174,17 +213,23 @@ def test_trigger_analysis_error_mappings(api_test_client: TestClient) -> None:
     assert res_401.json()["error_code"] == "UNAUTHORIZED"
 
     # 403
-    res_403 = api_test_client.post("/api/v1/analyses", json={"owner": "forbidden-repo", "repo": "repo"})
+    res_403 = api_test_client.post(
+        "/api/v1/analyses", json={"owner": "forbidden-repo", "repo": "repo"}
+    )
     assert res_403.status_code == 403
     assert res_403.json()["error_code"] == "FORBIDDEN"
 
     # 429
-    res_429 = api_test_client.post("/api/v1/analyses", json={"owner": "rate-limited", "repo": "repo"})
+    res_429 = api_test_client.post(
+        "/api/v1/analyses", json={"owner": "rate-limited", "repo": "repo"}
+    )
     assert res_429.status_code == 429
     assert res_429.json()["error_code"] == "RATE_LIMIT_EXCEEDED"
 
     # 504
-    res_504 = api_test_client.post("/api/v1/analyses", json={"owner": "timeout-repo", "repo": "repo"})
+    res_504 = api_test_client.post(
+        "/api/v1/analyses", json={"owner": "timeout-repo", "repo": "repo"}
+    )
     assert res_504.status_code == 504
     assert res_504.json()["error_code"] == "GATEWAY_TIMEOUT"
 

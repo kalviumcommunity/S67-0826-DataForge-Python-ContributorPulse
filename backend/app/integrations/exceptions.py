@@ -1,6 +1,4 @@
-"""Custom typed exceptions for GitHub REST API client."""
-
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 
 class GitHubAPIError(Exception):
@@ -25,11 +23,13 @@ class GitHubAPIError(Exception):
 
 class GitHubAuthenticationError(GitHubAPIError):
     """Raised when GitHub returns 401 Unauthorized (invalid or expired token)."""
+
     pass
 
 
 class GitHubForbiddenError(GitHubAPIError):
     """Raised when GitHub returns 403 Forbidden (insufficient permissions)."""
+
     pass
 
 
@@ -51,19 +51,23 @@ class GitHubRateLimitError(GitHubAPIError):
 
 class GitHubNotFoundError(GitHubAPIError):
     """Raised when requested GitHub repository or resource is not found (HTTP 404)."""
+
     pass
 
 
 class GitHubValidationError(GitHubAPIError):
     """Raised when GitHub rejects input parameters with 422 Unprocessable Entity."""
+
     pass
 
 
 class GitHubTimeoutError(GitHubAPIError):
     """Raised when an HTTP request to GitHub times out."""
+
     pass
 
 
 class GitHubServerError(GitHubAPIError):
     """Raised when GitHub returns 5xx server-side errors."""
+
     pass

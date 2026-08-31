@@ -1,8 +1,5 @@
-"""Text and timestamp normalization utilities for GitHub datasets."""
-
-from datetime import datetime, timezone
-import re
 import unicodedata
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 
