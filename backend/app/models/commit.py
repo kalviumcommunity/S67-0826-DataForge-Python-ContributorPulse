@@ -2,7 +2,8 @@
 
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
-from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+
+from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.app.models.base import Base, BigIntFK, BigIntPK
@@ -17,9 +18,7 @@ class Commit(Base):
     """SQLAlchemy model representing a commit in a repository."""
 
     __tablename__ = "commits"
-    __table_args__ = (
-        UniqueConstraint("repository_id", "sha", name="uq_commits_repo_sha"),
-    )
+    __table_args__ = (UniqueConstraint("repository_id", "sha", name="uq_commits_repo_sha"),)
 
     id: Mapped[int] = mapped_column(BigIntPK, primary_key=True, autoincrement=True)
     repository_id: Mapped[int] = mapped_column(

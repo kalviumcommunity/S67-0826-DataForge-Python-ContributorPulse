@@ -1,9 +1,9 @@
 """End-to-end database integration test for data cleaning, validation, and persistence."""
 
-from datetime import datetime, timezone
 import os
+
 import pytest
-from sqlalchemy import create_engine, func, select
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.models.base import Base, utcnow

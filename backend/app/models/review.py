@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
+
 from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,7 +29,9 @@ class Review(Base):
     contributor_id: Mapped[Optional[int]] = mapped_column(
         BigIntFK, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    state: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED
+    state: Mapped[str] = mapped_column(
+        String(50), nullable=False, index=True
+    )  # APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED
     body: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     submitted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True

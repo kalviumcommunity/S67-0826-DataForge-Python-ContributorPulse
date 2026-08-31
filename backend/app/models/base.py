@@ -1,6 +1,7 @@
 """SQLAlchemy declarative base class and common timestamp mixin."""
 
 from datetime import datetime, timezone
+
 from sqlalchemy import BigInteger, DateTime, Integer
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -16,6 +17,7 @@ def utcnow() -> datetime:
 
 class Base(DeclarativeBase):
     """Base class for all SQLAlchemy ORM domain models."""
+
     pass
 
 

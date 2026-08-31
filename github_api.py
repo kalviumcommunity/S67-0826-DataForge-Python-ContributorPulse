@@ -1,7 +1,13 @@
-"""Bridge connecting Streamlit frontend calls to the ContributorPulse FastAPI backend."""
+"""
+Legacy compatibility module for ContributorPulse frontend.
+
+Provides backward-compatible functional wrappers forwarding calls to the canonical
+BackendAPIClient in api_client.py. New code should prefer BackendAPIClient directly.
+"""
 
 import logging
 from typing import Any, Dict, List, Optional
+
 from api_client import BackendAPIClient
 
 logger = logging.getLogger("contributor_pulse.frontend_bridge")

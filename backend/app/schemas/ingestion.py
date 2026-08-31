@@ -1,7 +1,8 @@
 """Pydantic schemas for analysis runs and repository ingestion."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -45,13 +46,19 @@ class AnalysisSummary(BaseModel):
         json_schema_extra={"example": "completed"},
     )
     initiated_at: datetime = Field(..., description="UTC timestamp when run started")
-    completed_at: Optional[datetime] = Field(default=None, description="UTC timestamp when run finished")
-    duration_seconds: Optional[float] = Field(default=None, description="Execution duration in seconds")
+    completed_at: Optional[datetime] = Field(
+        default=None, description="UTC timestamp when run finished"
+    )
+    duration_seconds: Optional[float] = Field(
+        default=None, description="Execution duration in seconds"
+    )
     total_prs_ingested: int = Field(default=0, description="Count of ingested pull requests")
     total_commits_ingested: int = Field(default=0, description="Count of ingested commits")
     total_issues_ingested: int = Field(default=0, description="Count of ingested issues")
     total_contributors_ingested: int = Field(default=0, description="Count of unique contributors")
-    errors_count: int = Field(default=0, description="Number of non-fatal ingestion errors encountered")
+    errors_count: int = Field(
+        default=0, description="Number of non-fatal ingestion errors encountered"
+    )
     error_message: Optional[str] = Field(default=None, description="Error message if run failed")
 
 
@@ -72,7 +79,9 @@ class RepositoryDetail(BaseModel):
     name: str = Field(..., description="Repository name")
     full_name: str = Field(..., description="Full repository path owner/name")
     description: Optional[str] = Field(default=None, description="Repository description")
-    primary_language: Optional[str] = Field(default=None, description="Primary programming language")
+    primary_language: Optional[str] = Field(
+        default=None, description="Primary programming language"
+    )
     stars_count: int = Field(default=0, description="Star count")
     forks_count: int = Field(default=0, description="Fork count")
     open_issues_count: int = Field(default=0, description="Open issues count")

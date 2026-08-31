@@ -2,6 +2,7 @@
 
 import re
 from typing import Any, Dict, List, Optional, Tuple
+
 from backend.app.processing.normalizers import normalize_text, normalize_timestamp
 
 SHA_REGEX = re.compile(r"^[0-9a-fA-F]{7,40}$")
@@ -314,9 +315,8 @@ def clean_commit_data(
     else:
         raw_msg = raw_commit.get("message")
 
-    authored_at = (
-        normalize_timestamp(author_date)
-        or normalize_timestamp(raw_commit.get("authored_at"))
+    authored_at = normalize_timestamp(author_date) or normalize_timestamp(
+        raw_commit.get("authored_at")
     )
     committed_at = (
         normalize_timestamp(committer_date)
@@ -338,11 +338,7 @@ def clean_commit_data(
     deletions = max(0, int(stats.get("deletions") or raw_commit.get("deletions") or 0))
     total_changes = max(
         0,
-        int(
-            stats.get("total")
-            or raw_commit.get("total_changes")
-            or (additions + deletions)
-        ),
+        int(stats.get("total") or raw_commit.get("total_changes") or (additions + deletions)),
     )
 
     cleaned = {

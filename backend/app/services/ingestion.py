@@ -2,12 +2,13 @@
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 from uuid import uuid4
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.app.integrations.exceptions import GitHubAPIError, GitHubNotFoundError
+from backend.app.integrations.exceptions import GitHubNotFoundError
 from backend.app.integrations.github import GitHubClient
 from backend.app.models.analysis_run import AnalysisRun
 from backend.app.models.base import utcnow
@@ -96,11 +97,17 @@ class IngestionService:
         """Idempotently insert or update a Repository record."""
         github_id = raw_repo["id"]
         full_name = raw_repo["full_name"]
-        owner_name = raw_repo["owner"]["login"] if isinstance(raw_repo.get("owner"), dict) else raw_repo["owner"]
+        owner_name = (
+            raw_repo["owner"]["login"]
+            if isinstance(raw_repo.get("owner"), dict)
+            else raw_repo["owner"]
+        )
         repo_name = raw_repo["name"]
 
         repo = self.db.scalars(
-            select(Repository).where((Repository.github_id == github_id) | (Repository.full_name == full_name))
+            select(Repository).where(
+                (Repository.github_id == github_id) | (Repository.full_name == full_name)
+            )
         ).first()
 
         pushed_at_dt = parse_datetime(raw_repo.get("pushed_at"))
@@ -184,8 +191,12 @@ class IngestionService:
             pr.closed_at = closed_at_dt
             pr.merged_at = merged_at_dt
             pr.merge_commit_sha = raw_pr.get("merge_commit_sha")
-            pr.head_sha = raw_pr.get("head", {}).get("sha") if isinstance(raw_pr.get("head"), dict) else None
-            pr.base_branch = raw_pr.get("base", {}).get("ref") if isinstance(raw_pr.get("base"), dict) else None
+            pr.head_sha = (
+                raw_pr.get("head", {}).get("sha") if isinstance(raw_pr.get("head"), dict) else None
+            )
+            pr.base_branch = (
+                raw_pr.get("base", {}).get("ref") if isinstance(raw_pr.get("base"), dict) else None
+            )
             pr.additions = raw_pr.get("additions", pr.additions)
             pr.deletions = raw_pr.get("deletions", pr.deletions)
             pr.changed_files = raw_pr.get("changed_files", pr.changed_files)
@@ -209,8 +220,16 @@ class IngestionService:
                 closed_at=closed_at_dt,
                 merged_at=merged_at_dt,
                 merge_commit_sha=raw_pr.get("merge_commit_sha"),
-                head_sha=raw_pr.get("head", {}).get("sha") if isinstance(raw_pr.get("head"), dict) else None,
-                base_branch=raw_pr.get("base", {}).get("ref") if isinstance(raw_pr.get("base"), dict) else None,
+                head_sha=(
+                    raw_pr.get("head", {}).get("sha")
+                    if isinstance(raw_pr.get("head"), dict)
+                    else None
+                ),
+                base_branch=(
+                    raw_pr.get("base", {}).get("ref")
+                    if isinstance(raw_pr.get("base"), dict)
+                    else None
+                ),
                 additions=raw_pr.get("additions", 0),
                 deletions=raw_pr.get("deletions", 0),
                 changed_files=raw_pr.get("changed_files", 0),
@@ -372,9 +391,7 @@ class IngestionService:
         commit_obj = raw_commit.get("commit", {})
 
         commit = self.db.scalars(
-            select(Commit).where(
-                (Commit.repository_id == repository_id) & (Commit.sha == sha)
-            )
+            select(Commit).where((Commit.repository_id == repository_id) & (Commit.sha == sha))
         ).first()
 
         author_info = commit_obj.get("author", {}) if isinstance(commit_obj, dict) else {}
@@ -386,9 +403,17 @@ class IngestionService:
         stats = raw_commit.get("stats", {})
         additions = stats.get("additions", 0) if isinstance(stats, dict) else 0
         deletions = stats.get("deletions", 0) if isinstance(stats, dict) else 0
-        total_changes = stats.get("total", additions + deletions) if isinstance(stats, dict) else (additions + deletions)
+        total_changes = (
+            stats.get("total", additions + deletions)
+            if isinstance(stats, dict)
+            else (additions + deletions)
+        )
 
-        message = commit_obj.get("message", "") if isinstance(commit_obj, dict) else raw_commit.get("message", "")
+        message = (
+            commit_obj.get("message", "")
+            if isinstance(commit_obj, dict)
+            else raw_commit.get("message", "")
+        )
 
         if commit:
             commit.contributor_id = author_id or commit.contributor_id
@@ -471,7 +496,9 @@ class IngestionService:
             logger.warning("Repository %s/%s not found on GitHub.", owner, repo_name)
             raise
         except Exception as exc:
-            logger.exception("Failed to connect to GitHub for repository %s/%s: %s", owner, repo_name, exc)
+            logger.exception(
+                "Failed to connect to GitHub for repository %s/%s: %s", owner, repo_name, exc
+            )
             raise
 
         # Step 2: Persist repository record
@@ -496,13 +523,17 @@ class IngestionService:
             # ------------------------------------------------------------------
             logger.info("Ingesting contributors for %s...", repo.full_name)
             try:
-                raw_contributors = self.github_client.get_contributors(owner, repo_name, max_pages=max_pages)
+                raw_contributors = self.github_client.get_contributors(
+                    owner, repo_name, max_pages=max_pages
+                )
                 for raw_c in raw_contributors:
                     self.upsert_user(raw_c)
             except Exception as exc:
                 error_count += 1
                 logger.warning("Error ingesting contributors: %s", exc)
-                self.log_error(repo.id, analysis_run.id, "contributors", "contributor_list", None, str(exc))
+                self.log_error(
+                    repo.id, analysis_run.id, "contributors", "contributor_list", None, str(exc)
+                )
 
             # ------------------------------------------------------------------
             # Stage 2: Ingest Pull Requests & Reviews
@@ -511,7 +542,9 @@ class IngestionService:
             prs_count = 0
             pr_map: Dict[int, PullRequest] = {}  # number -> PullRequest
             try:
-                raw_prs = self.github_client.get_pull_requests(owner, repo_name, state="all", max_pages=max_pages)
+                raw_prs = self.github_client.get_pull_requests(
+                    owner, repo_name, state="all", max_pages=max_pages
+                )
                 for raw_pr in raw_prs:
                     author_user = self.upsert_user(raw_pr.get("user"))
                     author_id = author_user.id if author_user else None
@@ -521,14 +554,23 @@ class IngestionService:
 
                     # Fetch Reviews for PR
                     try:
-                        raw_reviews = self.github_client.get_reviews(owner, repo_name, pr.number, max_pages=max_pages)
+                        raw_reviews = self.github_client.get_reviews(
+                            owner, repo_name, pr.number, max_pages=max_pages
+                        )
                         for raw_rev in raw_reviews:
                             rev_user = self.upsert_user(raw_rev.get("user"))
                             rev_user_id = rev_user.id if rev_user else None
                             self.upsert_review(pr.id, raw_rev, rev_user_id)
                     except Exception as rev_exc:
                         error_count += 1
-                        self.log_error(repo.id, analysis_run.id, "reviews", "pull_request_review", str(pr.number), str(rev_exc))
+                        self.log_error(
+                            repo.id,
+                            analysis_run.id,
+                            "reviews",
+                            "pull_request_review",
+                            str(pr.number),
+                            str(rev_exc),
+                        )
             except Exception as exc:
                 error_count += 1
                 logger.warning("Error ingesting pull requests: %s", exc)
@@ -541,7 +583,9 @@ class IngestionService:
             issues_count = 0
             issue_map: Dict[int, Issue] = {}  # number -> Issue
             try:
-                raw_issues = self.github_client.get_issues(owner, repo_name, state="all", max_pages=max_pages)
+                raw_issues = self.github_client.get_issues(
+                    owner, repo_name, state="all", max_pages=max_pages
+                )
                 for raw_issue in raw_issues:
                     author_user = self.upsert_user(raw_issue.get("user"))
                     author_id = author_user.id if author_user else None
@@ -558,7 +602,9 @@ class IngestionService:
             # ------------------------------------------------------------------
             logger.info("Ingesting comments for %s...", repo.full_name)
             try:
-                raw_comments = self.github_client.get_comments(owner, repo_name, max_pages=max_pages)
+                raw_comments = self.github_client.get_comments(
+                    owner, repo_name, max_pages=max_pages
+                )
                 for raw_comment in raw_comments:
                     author_user = self.upsert_user(raw_comment.get("user"))
                     author_id = author_user.id if author_user else None
@@ -573,7 +619,9 @@ class IngestionService:
                             issue_num = None
 
                     pr_id = pr_map[issue_num].id if issue_num and issue_num in pr_map else None
-                    iss_id = issue_map[issue_num].id if issue_num and issue_num in issue_map else None
+                    iss_id = (
+                        issue_map[issue_num].id if issue_num and issue_num in issue_map else None
+                    )
 
                     self.upsert_comment(
                         repo.id,
@@ -623,7 +671,9 @@ class IngestionService:
             except Exception as pipe_exc:
                 error_count += 1
                 logger.warning("Error running cleaning pipeline: %s", pipe_exc)
-                self.log_error(repo.id, analysis_run.id, "cleaning_validation", "pipeline", None, str(pipe_exc))
+                self.log_error(
+                    repo.id, analysis_run.id, "cleaning_validation", "pipeline", None, str(pipe_exc)
+                )
 
             # ------------------------------------------------------------------
             # Stage 7: Retention Feature Engineering & KPI Engine
@@ -641,7 +691,9 @@ class IngestionService:
             except Exception as analytics_exc:
                 error_count += 1
                 logger.warning("Error running analytics engine: %s", analytics_exc)
-                self.log_error(repo.id, analysis_run.id, "analytics_engine", "kpis", None, str(analytics_exc))
+                self.log_error(
+                    repo.id, analysis_run.id, "analytics_engine", "kpis", None, str(analytics_exc)
+                )
 
             # ------------------------------------------------------------------
             # Finalize Analysis Run Counts & Status
@@ -650,11 +702,14 @@ class IngestionService:
             duration = (completed_at - initiated_at).total_seconds()
 
             # Query real count of distinct contributors associated with this repo
-            distinct_contributors = self.db.scalar(
-                select(func.count(func.distinct(PullRequest.contributor_id))).where(
-                    PullRequest.repository_id == repo.id
+            distinct_contributors = (
+                self.db.scalar(
+                    select(func.count(func.distinct(PullRequest.contributor_id))).where(
+                        PullRequest.repository_id == repo.id
+                    )
                 )
-            ) or 0
+                or 0
+            )
 
             analysis_run.total_prs_ingested = prs_count
             analysis_run.total_commits_ingested = commits_count
@@ -670,7 +725,9 @@ class IngestionService:
 
         except Exception as fatal_exc:
             self.db.rollback()
-            logger.exception("Fatal error during analysis of %s/%s: %s", owner, repo_name, fatal_exc)
+            logger.exception(
+                "Fatal error during analysis of %s/%s: %s", owner, repo_name, fatal_exc
+            )
 
             # Update run to FAILED
             failed_run = self.db.scalars(

@@ -1,6 +1,7 @@
 """Deterministic unit and integration tests for retention features and KPI engine."""
 
 from datetime import datetime, timedelta, timezone
+
 import pytest
 from sqlalchemy import create_engine, func, select
 from sqlalchemy.orm import Session, sessionmaker
@@ -12,9 +13,7 @@ from backend.app.analytics.engine import (
 )
 from backend.app.models.base import Base, utcnow
 from backend.app.models.comment import Comment
-from backend.app.models.commit import Commit
 from backend.app.models.contributor_feature import ContributorFeature
-from backend.app.models.issue import Issue
 from backend.app.models.pull_request import PullRequest
 from backend.app.models.repository import Repository
 from backend.app.models.review import Review
@@ -47,15 +46,19 @@ def test_contributor_features_full_onboarding_velocity(db_session: Session) -> N
     db_session.add(repo)
     db_session.flush()
 
-    author = User(github_id=201, login="alice_dev", name="Alice Dev", user_type="User", is_bot=False)
-    reviewer = User(github_id=202, login="bob_maintainer", name="Bob Maintainer", user_type="User", is_bot=False)
+    author = User(
+        github_id=201, login="alice_dev", name="Alice Dev", user_type="User", is_bot=False
+    )
+    reviewer = User(
+        github_id=202, login="bob_maintainer", name="Bob Maintainer", user_type="User", is_bot=False
+    )
     db_session.add_all([author, reviewer])
     db_session.flush()
 
     base_time = datetime(2026, 7, 1, 10, 0, 0, tzinfo=timezone.utc)
-    response_time = base_time + timedelta(hours=2)      # 7,200 seconds
-    review_time = base_time + timedelta(hours=4)        # 14,400 seconds
-    merge_time = base_time + timedelta(hours=10)        # 36,000 seconds
+    response_time = base_time + timedelta(hours=2)  # 7,200 seconds
+    review_time = base_time + timedelta(hours=4)  # 14,400 seconds
+    merge_time = base_time + timedelta(hours=10)  # 36,000 seconds
 
     # First PR created at base_time, merged at merge_time
     pr1 = PullRequest(

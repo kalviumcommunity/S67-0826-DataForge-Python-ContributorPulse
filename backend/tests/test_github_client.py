@@ -2,6 +2,7 @@
 
 import httpx
 import pytest
+
 from backend.app.core.config import Settings
 from backend.app.integrations.exceptions import (
     GitHubAPIError,
@@ -19,10 +20,10 @@ from backend.app.integrations.github import GitHubClient, get_github_client
 def test_auth_header_and_repr() -> None:
     """Test authorization header generation and secret safety in repr."""
     # With token
-    client_with_tok = GitHubClient(token="ghp_testsecret123456789")
+    client_with_tok = GitHubClient(token="test_secret_token_123456789")
     headers = client_with_tok._get_headers()
-    assert headers["Authorization"] == "Bearer ghp_testsecret123456789"
-    assert "ghp_testsecret123456789" not in repr(client_with_tok)
+    assert headers["Authorization"] == "Bearer test_secret_token_123456789"
+    assert "test_secret_token_123456789" not in repr(client_with_tok)
     assert "****" in repr(client_with_tok)
 
     # Without token
@@ -65,6 +66,7 @@ def test_get_repository_success() -> None:
 
 def test_pagination_multiple_pages() -> None:
     """Test paginated responses across multiple pages."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         page = int(request.url.params.get("page", 1))
         if page == 1:
@@ -84,6 +86,7 @@ def test_pagination_multiple_pages() -> None:
 
 def test_pagination_max_pages_limit() -> None:
     """Test pagination honors max_pages parameter."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=[{"id": 1}, {"id": 2}])
 
@@ -115,6 +118,7 @@ def test_transient_failure_retry_and_recovery() -> None:
 
 def test_transient_failure_max_retries_exceeded() -> None:
     """Test persistent 503 error raises GitHubServerError after retries."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(503, json={"message": "Service Unavailable"})
 
@@ -128,6 +132,7 @@ def test_transient_failure_max_retries_exceeded() -> None:
 
 def test_request_timeout_behavior() -> None:
     """Test network timeout triggers retries and raises GitHubTimeoutError."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         raise httpx.ConnectTimeout("Connection timed out")
 
@@ -140,6 +145,7 @@ def test_request_timeout_behavior() -> None:
 
 def test_401_unauthorized_error() -> None:
     """Test 401 status code raises GitHubAuthenticationError."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(401, json={"message": "Bad credentials"})
 
@@ -153,6 +159,7 @@ def test_401_unauthorized_error() -> None:
 
 def test_403_rate_limit_and_forbidden() -> None:
     """Test 403 rate limit detection and standard 403 forbidden."""
+
     # 403 Rate limit
     def rate_limit_handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(
@@ -182,6 +189,7 @@ def test_403_rate_limit_and_forbidden() -> None:
 
 def test_404_not_found() -> None:
     """Test 404 status raises GitHubNotFoundError."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(404, json={"message": "Not Found"})
 
@@ -195,6 +203,7 @@ def test_404_not_found() -> None:
 
 def test_422_validation_error() -> None:
     """Test 422 status raises GitHubValidationError."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(422, json={"message": "Validation Failed", "errors": []})
 
@@ -208,8 +217,11 @@ def test_422_validation_error() -> None:
 
 def test_429_rate_limit() -> None:
     """Test 429 status raises GitHubRateLimitError with retry-after header."""
+
     def handler(request: httpx.Request) -> httpx.Response:
-        return httpx.Response(429, headers={"retry-after": "60"}, json={"message": "Too Many Requests"})
+        return httpx.Response(
+            429, headers={"retry-after": "60"}, json={"message": "Too Many Requests"}
+        )
 
     transport = httpx.MockTransport(handler)
     with httpx.Client(transport=transport) as http_client:
@@ -221,6 +233,7 @@ def test_429_rate_limit() -> None:
 
 def test_malformed_response_and_non_json() -> None:
     """Test handling of non-JSON / plain text error responses."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         return httpx.Response(400, text="Bad Request Plain Text")
 
@@ -234,6 +247,7 @@ def test_malformed_response_and_non_json() -> None:
 
 def test_all_api_methods() -> None:
     """Test all domain API query methods on GitHubClient."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
         if path.endswith("/pulls"):
@@ -247,7 +261,9 @@ def test_all_api_methods() -> None:
         elif path.endswith("/commits"):
             return httpx.Response(200, json=[{"sha": "abc1234", "message": "feat: init"}])
         elif path.endswith("/stats/commit_activity"):
-            return httpx.Response(200, json=[{"total": 10, "week": 1600000000, "days": [0, 1, 2, 3, 4, 0, 0]}])
+            return httpx.Response(
+                200, json=[{"total": 10, "week": 1600000000, "days": [0, 1, 2, 3, 4, 0, 0]}]
+            )
         return httpx.Response(200, json={})
 
     transport = httpx.MockTransport(handler)
@@ -281,9 +297,9 @@ def test_all_api_methods() -> None:
 
 def test_dependency_and_context_manager() -> None:
     """Test get_github_client dependency provider and context manager."""
-    settings = Settings(GITHUB_TOKEN="ghp_dep_test_token_999")
+    settings = Settings(GITHUB_TOKEN="test_dep_token_999")
     dep_client = get_github_client(settings=settings)
-    assert dep_client.token == "ghp_dep_test_token_999"
+    assert dep_client.token == "test_dep_token_999"
 
     with GitHubClient() as cm_client:
         assert cm_client is not None

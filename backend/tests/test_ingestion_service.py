@@ -1,6 +1,5 @@
-"""Unit tests for IngestionService and idempotent persistence."""
+from datetime import timezone
 
-from datetime import datetime, timezone
 import httpx
 import pytest
 from sqlalchemy import create_engine, func, select
@@ -8,7 +7,6 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.integrations.exceptions import GitHubNotFoundError
 from backend.app.integrations.github import GitHubClient
-from backend.app.models.analysis_run import AnalysisRun
 from backend.app.models.base import Base
 from backend.app.models.comment import Comment
 from backend.app.models.commit import Commit
@@ -16,7 +14,6 @@ from backend.app.models.ingestion_error import IngestionError
 from backend.app.models.issue import Issue
 from backend.app.models.pull_request import PullRequest
 from backend.app.models.repository import Repository
-from backend.app.models.review import Review
 from backend.app.models.user import User
 from backend.app.services.ingestion import IngestionService, parse_datetime
 
@@ -35,112 +32,134 @@ def db_session():
 
 def create_mock_github_client(fail_reviews: bool = False, not_found: bool = False) -> GitHubClient:
     """Helper to instantiate GitHubClient with deterministic mocked endpoints."""
+
     def handler(request: httpx.Request) -> httpx.Response:
         path = request.url.path
         if not_found:
             return httpx.Response(404, json={"message": "Not Found"})
 
         if path == "/repos/octocat/Hello-World":
-            return httpx.Response(200, json={
-                "id": 1296269,
-                "name": "Hello-World",
-                "full_name": "octocat/Hello-World",
-                "owner": {"login": "octocat", "id": 583231},
-                "description": "My first repo",
-                "stargazers_count": 2500,
-                "forks_count": 1200,
-                "open_issues_count": 15,
-                "language": "Python",
-                "default_branch": "main",
-                "private": False,
-                "fork": False,
-                "pushed_at": "2026-08-25T12:00:00Z",
-            })
-        elif path.endswith("/contributors"):
-            return httpx.Response(200, json=[
-                {
-                    "id": 583231,
-                    "login": "octocat",
-                    "avatar_url": "https://avatars.githubusercontent.com/u/583231",
-                    "html_url": "https://github.com/octocat",
-                    "type": "User",
+            return httpx.Response(
+                200,
+                json={
+                    "id": 1296269,
+                    "name": "Hello-World",
+                    "full_name": "octocat/Hello-World",
+                    "owner": {"login": "octocat", "id": 583231},
+                    "description": "My first repo",
+                    "stargazers_count": 2500,
+                    "forks_count": 1200,
+                    "open_issues_count": 15,
+                    "language": "Python",
+                    "default_branch": "main",
+                    "private": False,
+                    "fork": False,
+                    "pushed_at": "2026-08-25T12:00:00Z",
                 },
-                {
-                    "id": 999999,
-                    "login": "contributor1",
-                    "avatar_url": "https://avatars.githubusercontent.com/u/999999",
-                    "html_url": "https://github.com/contributor1",
-                    "type": "User",
-                }
-            ])
+            )
+        elif path.endswith("/contributors"):
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 583231,
+                        "login": "octocat",
+                        "avatar_url": "https://avatars.githubusercontent.com/u/583231",
+                        "html_url": "https://github.com/octocat",
+                        "type": "User",
+                    },
+                    {
+                        "id": 999999,
+                        "login": "contributor1",
+                        "avatar_url": "https://avatars.githubusercontent.com/u/999999",
+                        "html_url": "https://github.com/contributor1",
+                        "type": "User",
+                    },
+                ],
+            )
         elif path.endswith("/pulls"):
-            return httpx.Response(200, json=[
-                {
-                    "id": 1001,
-                    "number": 1,
-                    "title": "Add initial onboarding guide",
-                    "body": "Welcome new contributors",
-                    "state": "closed",
-                    "draft": False,
-                    "merged": True,
-                    "merged_at": "2026-08-20T10:00:00Z",
-                    "created_at": "2026-08-19T08:00:00Z",
-                    "closed_at": "2026-08-20T10:00:00Z",
-                    "author_association": "FIRST_TIME_CONTRIBUTOR",
-                    "user": {"id": 999999, "login": "contributor1", "type": "User"},
-                    "additions": 150,
-                    "deletions": 10,
-                    "changed_files": 3,
-                }
-            ])
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 1001,
+                        "number": 1,
+                        "title": "Add initial onboarding guide",
+                        "body": "Welcome new contributors",
+                        "state": "closed",
+                        "draft": False,
+                        "merged": True,
+                        "merged_at": "2026-08-20T10:00:00Z",
+                        "created_at": "2026-08-19T08:00:00Z",
+                        "closed_at": "2026-08-20T10:00:00Z",
+                        "author_association": "FIRST_TIME_CONTRIBUTOR",
+                        "user": {"id": 999999, "login": "contributor1", "type": "User"},
+                        "additions": 150,
+                        "deletions": 10,
+                        "changed_files": 3,
+                    }
+                ],
+            )
         elif "/reviews" in path:
             if fail_reviews:
                 return httpx.Response(500, json={"message": "Review fetch error"})
-            return httpx.Response(200, json=[
-                {
-                    "id": 2001,
-                    "state": "APPROVED",
-                    "body": "Great first PR!",
-                    "submitted_at": "2026-08-19T14:00:00Z",
-                    "user": {"id": 583231, "login": "octocat", "type": "User"},
-                }
-            ])
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 2001,
+                        "state": "APPROVED",
+                        "body": "Great first PR!",
+                        "submitted_at": "2026-08-19T14:00:00Z",
+                        "user": {"id": 583231, "login": "octocat", "type": "User"},
+                    }
+                ],
+            )
         elif path.endswith("/issues"):
-            return httpx.Response(200, json=[
-                {
-                    "id": 3001,
-                    "number": 2,
-                    "title": "Improve documentation for onboarding",
-                    "body": "Clarify setup steps",
-                    "state": "open",
-                    "created_at": "2026-08-21T09:00:00Z",
-                    "user": {"id": 999999, "login": "contributor1", "type": "User"},
-                    "comments": 2,
-                }
-            ])
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 3001,
+                        "number": 2,
+                        "title": "Improve documentation for onboarding",
+                        "body": "Clarify setup steps",
+                        "state": "open",
+                        "created_at": "2026-08-21T09:00:00Z",
+                        "user": {"id": 999999, "login": "contributor1", "type": "User"},
+                        "comments": 2,
+                    }
+                ],
+            )
         elif path.endswith("/comments"):
-            return httpx.Response(200, json=[
-                {
-                    "id": 4001,
-                    "body": "I will take a look at this issue.",
-                    "created_at": "2026-08-21T11:00:00Z",
-                    "issue_url": "https://api.github.com/repos/octocat/Hello-World/issues/2",
-                    "user": {"id": 583231, "login": "octocat", "type": "User"},
-                }
-            ])
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "id": 4001,
+                        "body": "I will take a look at this issue.",
+                        "created_at": "2026-08-21T11:00:00Z",
+                        "issue_url": "https://api.github.com/repos/octocat/Hello-World/issues/2",
+                        "user": {"id": 583231, "login": "octocat", "type": "User"},
+                    }
+                ],
+            )
         elif path.endswith("/commits"):
-            return httpx.Response(200, json=[
-                {
-                    "sha": "a1b2c3d4e5f6",
-                    "commit": {
-                        "message": "docs: add getting started section",
-                        "author": {"name": "contributor1", "date": "2026-08-19T07:30:00Z"},
-                        "committer": {"name": "contributor1", "date": "2026-08-19T07:30:00Z"},
-                    },
-                    "author": {"id": 999999, "login": "contributor1", "type": "User"},
-                    "stats": {"additions": 150, "deletions": 10, "total": 160},
-                }
-            ])
+            return httpx.Response(
+                200,
+                json=[
+                    {
+                        "sha": "a1b2c3d4e5f6",
+                        "commit": {
+                            "message": "docs: add getting started section",
+                            "author": {"name": "contributor1", "date": "2026-08-19T07:30:00Z"},
+                            "committer": {"name": "contributor1", "date": "2026-08-19T07:30:00Z"},
+                        },
+                        "author": {"id": 999999, "login": "contributor1", "type": "User"},
+                        "stats": {"additions": 150, "deletions": 10, "total": 160},
+                    }
+                ],
+            )
         return httpx.Response(200, json={})
 
     transport = httpx.MockTransport(handler)
@@ -172,7 +191,9 @@ def test_full_ingestion_success(db_session: Session) -> None:
     assert run.total_contributors_ingested == 1
 
     # Verify repository record
-    repo = db_session.scalars(select(Repository).where(Repository.full_name == "octocat/Hello-World")).first()
+    repo = db_session.scalars(
+        select(Repository).where(Repository.full_name == "octocat/Hello-World")
+    ).first()
     assert repo is not None
     assert repo.stars_count == 2500
     assert repo.primary_language == "Python"
@@ -243,7 +264,9 @@ def test_partial_failure_logs_ingestion_errors(db_session: Session) -> None:
     assert run.status == "PARTIALLY_COMPLETED"
 
     # Verify ingestion error was recorded
-    errors = db_session.scalars(select(IngestionError).where(IngestionError.analysis_run_id == run.id)).all()
+    errors = db_session.scalars(
+        select(IngestionError).where(IngestionError.analysis_run_id == run.id)
+    ).all()
     assert len(errors) >= 1
     assert errors[0].stage == "reviews"
 

@@ -1,13 +1,14 @@
 """Analytics and contributor journey endpoints for ContributorPulse."""
 
 import math
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timedelta
+from typing import Dict, List, Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from backend.app.analytics.engine import RepositoryKPIEngine
+from backend.app.analytics.engine import RepositoryKPIEngine, parse_period_days
 from backend.app.db.session import get_db
 from backend.app.models.base import utcnow
 from backend.app.models.contributor_feature import ContributorFeature
@@ -39,6 +40,14 @@ from backend.app.schemas.common import DataResponse, PaginationMeta
 router = APIRouter(tags=["Analytics & Intelligence"])
 
 
+def _get_period_cutoff(period: Optional[str]) -> Optional[datetime]:
+    """Calculate UTC cutoff datetime for the requested period window."""
+    days = parse_period_days(period)
+    if not days:
+        return None
+    return utcnow() - timedelta(days=days)
+
+
 def _get_repository_or_404(db: Session, owner: str, name: str) -> Repository:
     """Helper to fetch a repository or raise a structured 404."""
     repo = db.scalars(
@@ -59,21 +68,30 @@ def _get_repository_or_404(db: Session, owner: str, name: str) -> Repository:
     "/repositories/{owner}/{repo}/summary",
     response_model=DataResponse[RepositorySummaryResponse],
     summary="Repository Overview & Health Score",
-    description="Retrieve repository activity summary, retention rates, and composite health score (0-100).",
+    description="Retrieve repository activity summary, retention rates, and composite health score (0-100) filtered by period.",
 )
 def get_repository_summary(
     owner: str,
     repo: str,
+    period: Optional[str] = Query(
+        None, description="Time-period filter: e.g. 30d, 90d, 180d, 365d, all"
+    ),
     db: Session = Depends(get_db),
 ) -> DataResponse[RepositorySummaryResponse]:
     """Return high-level summary and bounded health score."""
     repository = _get_repository_or_404(db, owner, repo)
     kpi_engine = RepositoryKPIEngine(db, repository.id)
-    kpis = kpi_engine.calculate_kpis()
+    kpis = kpi_engine.calculate_kpis(period=period)
 
-    total_commits = db.scalar(
-        select(func.count()).select_from(PullRequest).where(PullRequest.repository_id == repository.id)
-    ) or 0
+    cutoff_dt = _get_period_cutoff(period)
+    pr_count_query = (
+        select(func.count())
+        .select_from(PullRequest)
+        .where(PullRequest.repository_id == repository.id)
+    )
+    if cutoff_dt:
+        pr_count_query = pr_count_query.where(PullRequest.created_at >= cutoff_dt)
+    total_commits = db.scalar(pr_count_query) or 0
 
     summary_data = RepositorySummaryResponse(
         repository_id=repository.id,
@@ -97,17 +115,20 @@ def get_repository_summary(
     "/repositories/{owner}/{repo}/kpis",
     response_model=DataResponse[KPISummaryResponse],
     summary="Comprehensive KPI Summary",
-    description="Retrieve repository KPIs with values, measurement units, descriptions, and sample size metadata.",
+    description="Retrieve repository KPIs with values, measurement units, descriptions, and sample size metadata filtered by period.",
 )
 def get_repository_kpis(
     owner: str,
     repo: str,
+    period: Optional[str] = Query(
+        None, description="Time-period filter: e.g. 30d, 90d, 180d, 365d, all"
+    ),
     db: Session = Depends(get_db),
 ) -> DataResponse[KPISummaryResponse]:
     """Return all repository KPIs with detailed sample size provenance."""
     repository = _get_repository_or_404(db, owner, repo)
     kpi_engine = RepositoryKPIEngine(db, repository.id)
-    kpis = kpi_engine.calculate_kpis()
+    kpis = kpi_engine.calculate_kpis(period=period)
     samples = kpis["sample_sizes"]
 
     kpi_items = {
@@ -170,18 +191,27 @@ def get_repository_kpis(
     "/repositories/{owner}/{repo}/contributors",
     response_model=DataResponse[PaginatedContributorsResponse],
     summary="Paginated Contributor Journeys",
-    description="Retrieve paginated contributor features, onboarding velocities, retention status, and risk signals.",
+    description="Retrieve paginated contributor features, onboarding velocities, retention status, and risk signals filtered by period.",
 )
 def get_repository_contributors(
     owner: str,
     repo: str,
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
     per_page: int = Query(20, ge=1, le=100, description="Items per page"),
-    experience_level: Optional[str] = Query(None, description="Filter by experience level (first_time, repeat, core)"),
-    retention_status: Optional[str] = Query(None, description="Filter by retention status (onboarding, retained, churned)"),
-    churn_risk_level: Optional[str] = Query(None, description="Filter by churn risk level (low, medium, high)"),
+    experience_level: Optional[str] = Query(
+        None, description="Filter by experience level (first_time, repeat, core)"
+    ),
+    retention_status: Optional[str] = Query(
+        None, description="Filter by retention status (onboarding, retained, churned)"
+    ),
+    churn_risk_level: Optional[str] = Query(
+        None, description="Filter by churn risk level (low, medium, high)"
+    ),
     is_active_maintainer: Optional[bool] = Query(None, description="Filter active maintainers"),
     search: Optional[str] = Query(None, description="Search by contributor login or name"),
+    period: Optional[str] = Query(
+        None, description="Time-period filter: e.g. 30d, 90d, 180d, 365d, all"
+    ),
     db: Session = Depends(get_db),
 ) -> DataResponse[PaginatedContributorsResponse]:
     """Return paginated and filtered contributor records."""
@@ -192,6 +222,13 @@ def get_repository_contributors(
         .join(User, ContributorFeature.contributor_id == User.id)
         .where(ContributorFeature.repository_id == repository.id)
     )
+
+    cutoff_dt = _get_period_cutoff(period)
+    if cutoff_dt:
+        query = query.where(
+            (ContributorFeature.first_contribution_at >= cutoff_dt)
+            | (ContributorFeature.last_active_at >= cutoff_dt)
+        )
 
     if experience_level:
         query = query.where(ContributorFeature.experience_level == experience_level.lower())
@@ -214,7 +251,9 @@ def get_repository_contributors(
     # Paginate
     offset = (page - 1) * per_page
     results = db.execute(
-        query.order_by(ContributorFeature.first_contribution_at.desc()).offset(offset).limit(per_page)
+        query.order_by(ContributorFeature.first_contribution_at.desc().nullslast())
+        .offset(offset)
+        .limit(per_page)
     ).all()
 
     items: List[ContributorFeatureItem] = []
@@ -284,19 +323,28 @@ def get_repository_contributors(
     "/repositories/{owner}/{repo}/funnel",
     response_model=DataResponse[RetentionFunnelResponse],
     summary="Retention Funnel Data",
-    description="Retrieve conversion counts and rates across onboarding and retention milestones.",
+    description="Retrieve conversion counts and rates across onboarding and retention milestones filtered by period.",
 )
 def get_retention_funnel(
     owner: str,
     repo: str,
+    period: Optional[str] = Query(
+        None, description="Time-period filter: e.g. 30d, 90d, 180d, 365d, all"
+    ),
     db: Session = Depends(get_db),
 ) -> DataResponse[RetentionFunnelResponse]:
     """Return retention funnel stages and conversion metrics."""
     repository = _get_repository_or_404(db, owner, repo)
 
-    features = db.scalars(
-        select(ContributorFeature).where(ContributorFeature.repository_id == repository.id)
-    ).all()
+    query = select(ContributorFeature).where(ContributorFeature.repository_id == repository.id)
+    cutoff_dt = _get_period_cutoff(period)
+    if cutoff_dt:
+        query = query.where(
+            (ContributorFeature.first_contribution_at >= cutoff_dt)
+            | (ContributorFeature.last_active_at >= cutoff_dt)
+        )
+
+    features = db.scalars(query).all()
 
     total = len(features)
     pr_merged = sum(1 for f in features if f.first_pr_merged)
@@ -308,11 +356,19 @@ def get_retention_funnel(
         return round((count / total) * 100.0, 1) if total > 0 else 0.0
 
     stages = [
-        FunnelStage(stage="Initial Contribution", count=total, conversion_rate=100.0 if total > 0 else 0.0),
+        FunnelStage(
+            stage="Initial Contribution", count=total, conversion_rate=100.0 if total > 0 else 0.0
+        ),
         FunnelStage(stage="First PR Merged", count=pr_merged, conversion_rate=calc_rate(pr_merged)),
-        FunnelStage(stage="Retained 30 Days", count=retained_30d, conversion_rate=calc_rate(retained_30d)),
-        FunnelStage(stage="Retained 60 Days", count=retained_60d, conversion_rate=calc_rate(retained_60d)),
-        FunnelStage(stage="Retained 90 Days", count=retained_90d, conversion_rate=calc_rate(retained_90d)),
+        FunnelStage(
+            stage="Retained 30 Days", count=retained_30d, conversion_rate=calc_rate(retained_30d)
+        ),
+        FunnelStage(
+            stage="Retained 60 Days", count=retained_60d, conversion_rate=calc_rate(retained_60d)
+        ),
+        FunnelStage(
+            stage="Retained 90 Days", count=retained_90d, conversion_rate=calc_rate(retained_90d)
+        ),
     ]
 
     return DataResponse(
@@ -329,19 +385,28 @@ def get_retention_funnel(
     "/repositories/{owner}/{repo}/response-distribution",
     response_model=DataResponse[ResponseDistributionResponse],
     summary="Response Time Distribution",
-    description="Retrieve binned response time distribution and central tendency measures.",
+    description="Retrieve binned response time distribution and central tendency measures filtered by period.",
 )
 def get_response_distribution(
     owner: str,
     repo: str,
+    period: Optional[str] = Query(
+        None, description="Time-period filter: e.g. 30d, 90d, 180d, 365d, all"
+    ),
     db: Session = Depends(get_db),
 ) -> DataResponse[ResponseDistributionResponse]:
     """Return response-time bracket distribution."""
     repository = _get_repository_or_404(db, owner, repo)
 
-    features = db.scalars(
-        select(ContributorFeature).where(ContributorFeature.repository_id == repository.id)
-    ).all()
+    query = select(ContributorFeature).where(ContributorFeature.repository_id == repository.id)
+    cutoff_dt = _get_period_cutoff(period)
+    if cutoff_dt:
+        query = query.where(
+            (ContributorFeature.first_contribution_at >= cutoff_dt)
+            | (ContributorFeature.last_active_at >= cutoff_dt)
+        )
+
+    features = db.scalars(query).all()
 
     b_under_12 = 0
     b_12_24 = 0
@@ -383,7 +448,11 @@ def get_response_distribution(
         DistributionBucket(bucket_label="No Response", count=b_no_resp, percentage=pct(b_no_resp)),
     ]
 
-    avg_resp = round(sum(response_hours_list) / len(response_hours_list), 2) if response_hours_list else None
+    avg_resp = (
+        round(sum(response_hours_list) / len(response_hours_list), 2)
+        if response_hours_list
+        else None
+    )
     med_resp = None
     if response_hours_list:
         sorted_h = sorted(response_hours_list)
@@ -405,34 +474,43 @@ def get_response_distribution(
     "/repositories/{owner}/{repo}/review-timeline",
     response_model=DataResponse[ReviewTimelineResponse],
     summary="Review Speed Timeline",
-    description="Retrieve chronological review and response velocity trends grouped by month.",
+    description="Retrieve chronological review and response velocity trends grouped by month filtered by period.",
 )
 def get_review_timeline(
     owner: str,
     repo: str,
+    period: Optional[str] = Query(
+        None, description="Time-period filter: e.g. 30d, 90d, 180d, 365d, all"
+    ),
     db: Session = Depends(get_db),
 ) -> DataResponse[ReviewTimelineResponse]:
     """Return historical timeline of review speeds."""
     repository = _get_repository_or_404(db, owner, repo)
 
-    features = db.scalars(
+    query = (
         select(ContributorFeature)
         .where(
             (ContributorFeature.repository_id == repository.id)
             & (ContributorFeature.first_contribution_at.is_not(None))
         )
         .order_by(ContributorFeature.first_contribution_at.asc())
-    ).all()
+    )
+
+    cutoff_dt = _get_period_cutoff(period)
+    if cutoff_dt:
+        query = query.where(ContributorFeature.first_contribution_at >= cutoff_dt)
+
+    features = db.scalars(query).all()
 
     # Group by YYYY-MM
     grouped: Dict[str, List[ContributorFeature]] = {}
     for f in features:
         if f.first_contribution_at:
-            period = f.first_contribution_at.strftime("%Y-%m")
-            grouped.setdefault(period, []).append(f)
+            period_str = f.first_contribution_at.strftime("%Y-%m")
+            grouped.setdefault(period_str, []).append(f)
 
     timeline_points: List[ReviewTimelinePoint] = []
-    for period, items in sorted(grouped.items()):
+    for period_str, items in sorted(grouped.items()):
         rev_times = [
             i.first_pr_review_duration_seconds / 3600.0
             for i in items
@@ -446,9 +524,11 @@ def get_review_timeline(
 
         timeline_points.append(
             ReviewTimelinePoint(
-                period=period,
+                period=period_str,
                 avg_review_hours=round(sum(rev_times) / len(rev_times), 2) if rev_times else None,
-                avg_response_hours=round(sum(resp_times) / len(resp_times), 2) if resp_times else None,
+                avg_response_hours=(
+                    round(sum(resp_times) / len(resp_times), 2) if resp_times else None
+                ),
                 reviews_count=len(rev_times),
                 prs_count=len(items),
             )
@@ -466,19 +546,25 @@ def get_review_timeline(
     "/repositories/{owner}/{repo}/merge-stats",
     response_model=DataResponse[MergeStatsResponse],
     summary="Pull Request Merge Statistics",
-    description="Retrieve merge success rates, outcomes, and duration distributions.",
+    description="Retrieve merge success rates, outcomes, and duration distributions filtered by period.",
 )
 def get_merge_stats(
     owner: str,
     repo: str,
+    period: Optional[str] = Query(
+        None, description="Time-period filter: e.g. 30d, 90d, 180d, 365d, all"
+    ),
     db: Session = Depends(get_db),
 ) -> DataResponse[MergeStatsResponse]:
     """Return PR merge metrics and durations."""
     repository = _get_repository_or_404(db, owner, repo)
 
-    prs = db.scalars(
-        select(PullRequest).where(PullRequest.repository_id == repository.id)
-    ).all()
+    query = select(PullRequest).where(PullRequest.repository_id == repository.id)
+    cutoff_dt = _get_period_cutoff(period)
+    if cutoff_dt:
+        query = query.where(PullRequest.created_at >= cutoff_dt)
+
+    prs = db.scalars(query).all()
 
     total_prs = len(prs)
     merged_prs = sum(1 for p in prs if p.is_merged)
@@ -492,7 +578,9 @@ def get_merge_stats(
             duration_hours = max(0.0, (p.merged_at - p.created_at).total_seconds() / 3600.0)
             merge_durations.append(duration_hours)
 
-    avg_merge_dur = round(sum(merge_durations) / len(merge_durations), 2) if merge_durations else None
+    avg_merge_dur = (
+        round(sum(merge_durations) / len(merge_durations), 2) if merge_durations else None
+    )
     med_merge_dur = None
     if merge_durations:
         sorted_d = sorted(merge_durations)
@@ -517,21 +605,32 @@ def get_merge_stats(
     "/repositories/{owner}/{repo}/correlations",
     response_model=DataResponse[CorrelationDataResponse],
     summary="Correlation & Feature Analysis Data",
-    description="Retrieve contributor-level feature vectors suitable for correlation and scatter analysis.",
+    description="Retrieve contributor-level feature vectors suitable for correlation and scatter analysis filtered by period.",
 )
 def get_correlation_data(
     owner: str,
     repo: str,
+    period: Optional[str] = Query(
+        None, description="Time-period filter: e.g. 30d, 90d, 180d, 365d, all"
+    ),
     db: Session = Depends(get_db),
 ) -> DataResponse[CorrelationDataResponse]:
     """Return tabular contributor metrics for scatter/correlation analysis."""
     repository = _get_repository_or_404(db, owner, repo)
 
-    results = db.execute(
+    query = (
         select(ContributorFeature, User)
         .join(User, ContributorFeature.contributor_id == User.id)
         .where(ContributorFeature.repository_id == repository.id)
-    ).all()
+    )
+    cutoff_dt = _get_period_cutoff(period)
+    if cutoff_dt:
+        query = query.where(
+            (ContributorFeature.first_contribution_at >= cutoff_dt)
+            | (ContributorFeature.last_active_at >= cutoff_dt)
+        )
+
+    results = db.execute(query).all()
 
     points: List[ContributorCorrelationPoint] = []
     for feat, user in results:
@@ -550,7 +649,11 @@ def get_correlation_data(
                     else None
                 ),
                 total_contributions=(
-                    feat.total_prs + feat.total_commits + feat.total_issues + feat.total_reviews + feat.total_comments
+                    feat.total_prs
+                    + feat.total_commits
+                    + feat.total_issues
+                    + feat.total_reviews
+                    + feat.total_comments
                 ),
                 total_prs=feat.total_prs,
                 is_retained_30d=feat.is_retained_30d,
@@ -572,17 +675,20 @@ def get_correlation_data(
     "/repositories/{owner}/{repo}/high-risk-contributors",
     response_model=DataResponse[HighRiskListResponse],
     summary="High Churn Risk Contributors",
-    description="Retrieve contributors identified with high churn risk, including risk scores and reasons.",
+    description="Retrieve contributors identified with high churn risk, including risk scores and reasons, filtered by period.",
 )
 def get_high_risk_contributors(
     owner: str,
     repo: str,
+    period: Optional[str] = Query(
+        None, description="Time-period filter: e.g. 30d, 90d, 180d, 365d, all"
+    ),
     db: Session = Depends(get_db),
 ) -> DataResponse[HighRiskListResponse]:
     """Return high churn risk contributors and explanatory penalty triggers."""
     repository = _get_repository_or_404(db, owner, repo)
 
-    results = db.execute(
+    query = (
         select(ContributorFeature, User)
         .join(User, ContributorFeature.contributor_id == User.id)
         .where(
@@ -590,7 +696,15 @@ def get_high_risk_contributors(
             & (ContributorFeature.churn_risk_level == "high")
         )
         .order_by(ContributorFeature.churn_risk_score.desc())
-    ).all()
+    )
+    cutoff_dt = _get_period_cutoff(period)
+    if cutoff_dt:
+        query = query.where(
+            (ContributorFeature.first_contribution_at >= cutoff_dt)
+            | (ContributorFeature.last_active_at >= cutoff_dt)
+        )
+
+    results = db.execute(query).all()
 
     items: List[HighRiskContributorItem] = []
     for feat, user in results:
@@ -624,7 +738,9 @@ def get_high_risk_contributors(
     description="Compare KPIs, retention metrics, and health scores across multiple repositories.",
 )
 def compare_repositories(
-    repos: str = Query(..., description="Comma-separated repository full names, e.g. 'owner1/repo1,owner2/repo2'"),
+    repos: str = Query(
+        ..., description="Comma-separated repository full names, e.g. 'owner1/repo1,owner2/repo2'"
+    ),
     db: Session = Depends(get_db),
 ) -> DataResponse[RepositoryComparisonResponse]:
     """Compare multiple repositories side by side."""

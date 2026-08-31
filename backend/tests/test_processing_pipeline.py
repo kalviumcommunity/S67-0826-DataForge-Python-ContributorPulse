@@ -1,18 +1,16 @@
 """Comprehensive deterministic tests for data cleaning, validation, and processing pipeline."""
 
 from datetime import datetime, timezone
+
 import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
 from backend.app.models.base import Base, utcnow
-from backend.app.models.comment import Comment
 from backend.app.models.commit import Commit
 from backend.app.models.ingestion_error import IngestionError
-from backend.app.models.issue import Issue
 from backend.app.models.pull_request import PullRequest
 from backend.app.models.repository import Repository
-from backend.app.models.review import Review
 from backend.app.models.user import User
 from backend.app.processing.cleaners import (
     clean_comment_data,
@@ -23,7 +21,7 @@ from backend.app.processing.cleaners import (
     clean_user_data,
 )
 from backend.app.processing.normalizers import normalize_text, normalize_timestamp
-from backend.app.processing.pipeline import DataCleaningPipeline, ProcessingStatistics
+from backend.app.processing.pipeline import DataCleaningPipeline
 
 
 @pytest.fixture
@@ -41,6 +39,7 @@ def db_session():
 # ------------------------------------------------------------------------------
 # 1. Normalizer Tests
 # ------------------------------------------------------------------------------
+
 
 def test_normalize_text() -> None:
     """Test text normalization rules."""
@@ -91,6 +90,7 @@ def test_normalize_timestamp() -> None:
 # ------------------------------------------------------------------------------
 # 2. Cleaner Tests
 # ------------------------------------------------------------------------------
+
 
 def test_clean_user_data() -> None:
     """Test user cleaning and bot detection."""
@@ -221,6 +221,7 @@ def test_clean_commit_data() -> None:
 # ------------------------------------------------------------------------------
 # 3. Pipeline Integration Tests
 # ------------------------------------------------------------------------------
+
 
 def test_pipeline_execution_and_statistics(db_session: Session) -> None:
     """Test full DataCleaningPipeline execution, normalization, and error quarantine."""

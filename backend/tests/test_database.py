@@ -1,8 +1,10 @@
 """Tests for database engine, session lifecycle, and connectivity checks."""
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
+
 from backend.app.core.config import Settings, get_settings
 from backend.app.db.session import (
     check_db_connectivity,
@@ -11,7 +13,6 @@ from backend.app.db.session import (
     get_session_factory,
 )
 from backend.app.main import create_app
-from fastapi.testclient import TestClient
 
 
 def test_get_engine_sqlite_and_memory() -> None:

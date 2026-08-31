@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
+
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -50,7 +51,9 @@ class PullRequest(Base):
         Boolean, default=False, nullable=False, index=True
     )
     author_association: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     closed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     merged_at: Mapped[Optional[datetime]] = mapped_column(

@@ -1,7 +1,8 @@
 """Pydantic schemas for analytics, KPIs, contributor journeys, and comparative reporting."""
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from backend.app.schemas.common import PaginationMeta
@@ -21,8 +22,12 @@ class RepositorySummaryResponse(BaseModel):
     total_prs: int = Field(..., ge=0)
     total_commits: int = Field(..., ge=0)
     total_issues: int = Field(..., ge=0)
-    retention_rate_30d: Optional[float] = Field(None, description="30-day first-time contributor retention percentage")
-    retention_rate_90d: Optional[float] = Field(None, description="90-day first-time contributor retention percentage")
+    retention_rate_30d: Optional[float] = Field(
+        None, description="30-day first-time contributor retention percentage"
+    )
+    retention_rate_90d: Optional[float] = Field(
+        None, description="90-day first-time contributor retention percentage"
+    )
     merge_rate: float = Field(..., ge=0.0, le=100.0, description="Percentage of PRs merged")
     calculated_at: datetime
 
@@ -93,7 +98,9 @@ class FunnelStage(BaseModel):
 
     stage: str
     count: int
-    conversion_rate: float = Field(..., ge=0.0, le=100.0, description="Conversion percentage from base stage")
+    conversion_rate: float = Field(
+        ..., ge=0.0, le=100.0, description="Conversion percentage from base stage"
+    )
 
 
 class RetentionFunnelResponse(BaseModel):

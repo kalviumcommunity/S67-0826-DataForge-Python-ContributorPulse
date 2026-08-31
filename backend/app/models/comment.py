@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
+
 from sqlalchemy import BigInteger, DateTime, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -44,7 +45,9 @@ class Comment(Base):
         String(50), nullable=False, index=True
     )  # issue, pull_request, review, commit
     body: Mapped[str] = mapped_column(Text, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, index=True
+    )
     updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships

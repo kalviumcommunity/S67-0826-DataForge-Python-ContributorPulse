@@ -1,0 +1,15 @@
+[flake8]
+max-line-length = 120
+extend-ignore = E203, E501, W503
+exclude =
+    .git,
+    __pycache__,
+    .pytest_cache,
+    .venv,
+    alembic,
+    build,
+    dist
+per-file-ignores =
+    backend/app/models/__init__.py:F401,F403
+    database/__init__.py:F401,F403
+    database/models/__init__.py:F401,F403

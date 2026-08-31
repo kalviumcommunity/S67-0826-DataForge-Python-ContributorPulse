@@ -1,8 +1,10 @@
 """Pytest fixtures for backend test suite."""
 
-import pytest
 from typing import Generator
+
+import pytest
 from fastapi.testclient import TestClient
+
 from backend.app.core.config import Settings, get_settings
 from backend.app.main import create_app
 
@@ -16,7 +18,7 @@ def test_settings() -> Settings:
         PROJECT_NAME="ContributorPulse-Test",
         VERSION="0.1.0-test",
         CORS_ORIGINS=["http://testserver"],
-        GITHUB_TOKEN="ghp_mock_token_for_testing_1234567890",
+        GITHUB_TOKEN="test-mock-token-12345",
         DATABASE_URL="sqlite:///:memory:",
     )
 

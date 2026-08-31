@@ -1,9 +1,9 @@
 """Tests for health check endpoints and standardized error handlers."""
 
-import pytest
 from fastapi import APIRouter, HTTPException, status
 from fastapi.testclient import TestClient
 from pydantic import BaseModel, Field
+
 from backend.app.core.config import Settings
 from backend.app.main import create_app
 

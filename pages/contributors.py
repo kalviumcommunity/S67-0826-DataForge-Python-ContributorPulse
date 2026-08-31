@@ -1,6 +1,3 @@
-"""ContributorPulse - Contributor Directory and Segmentation."""
-
-from typing import Any, Dict, List, Optional
 import pandas as pd
 import streamlit as st
 
@@ -37,7 +34,9 @@ st.write(
 st.divider()
 
 if not owner or not repo:
-    st.info("👈 Please enter a repository owner and name in the **Dashboard** or **Analyze Repository** page first.")
+    st.info(
+        "👈 Please enter a repository owner and name in the **Dashboard** or **Analyze Repository** page first."
+    )
     try:
         st.page_link("pages/dashboard.py", label="📊 Go to Dashboard", icon="📊")
     except Exception:
@@ -83,6 +82,8 @@ with col_page_num:
 # Fetch & Render Contributor Data
 # ==============================================================================
 
+period_filter = st.session_state.get("time_period", "All Ingested History")
+
 try:
     with st.spinner("Fetching contributor journeys from backend..."):
         res = client.get_contributors(
@@ -94,6 +95,7 @@ try:
             retention_status=None if ret_filter == "All" else ret_filter,
             churn_risk_level=None if risk_filter == "All" else risk_filter,
             search=search_query.strip() if search_query.strip() else None,
+            period=period_filter,
         )
 
     if not res or not res.get("items"):
@@ -105,7 +107,7 @@ try:
         total_pages = pagination.get("total_pages", 1)
 
         st.caption(
-            f"Showing **{len(items)}** of **{total_records}** contributors (Page {page_num} of {total_pages})"
+            f"Showing **{len(items)}** of **{total_records}** contributors (Page {page_num} of {total_pages}) | Cohort Window: **{period_filter}**"
         )
 
         df = pd.DataFrame(items)
@@ -145,3 +147,5 @@ try:
 
 except APIClientError as exc:
     st.error(f"⚠️ Error fetching contributors: {exc.message}")
+except Exception:
+    st.error("⚠️ Unexpected error: An unexpected error occurred while fetching contributors.")

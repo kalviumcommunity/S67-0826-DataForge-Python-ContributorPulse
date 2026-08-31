@@ -1,6 +1,7 @@
 """User / Contributor domain model."""
 
 from typing import TYPE_CHECKING, List, Optional
+
 from sqlalchemy import BigInteger, Boolean, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -34,18 +35,10 @@ class User(Base, TimestampMixin):
     pull_requests: Mapped[List["PullRequest"]] = relationship(
         "PullRequest", back_populates="contributor"
     )
-    issues: Mapped[List["Issue"]] = relationship(
-        "Issue", back_populates="contributor"
-    )
-    reviews: Mapped[List["Review"]] = relationship(
-        "Review", back_populates="contributor"
-    )
-    comments: Mapped[List["Comment"]] = relationship(
-        "Comment", back_populates="contributor"
-    )
-    commits: Mapped[List["Commit"]] = relationship(
-        "Commit", back_populates="contributor"
-    )
+    issues: Mapped[List["Issue"]] = relationship("Issue", back_populates="contributor")
+    reviews: Mapped[List["Review"]] = relationship("Review", back_populates="contributor")
+    comments: Mapped[List["Comment"]] = relationship("Comment", back_populates="contributor")
+    commits: Mapped[List["Commit"]] = relationship("Commit", back_populates="contributor")
     contributor_features: Mapped[List["ContributorFeature"]] = relationship(
         "ContributorFeature", back_populates="contributor"
     )
